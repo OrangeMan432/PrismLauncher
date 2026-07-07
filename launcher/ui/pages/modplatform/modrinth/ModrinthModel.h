@@ -85,7 +85,7 @@ class ModpackListModel : public QAbstractListModel {
 
    public slots:
     void searchRequestFinished(QList<ModPlatform::IndexedPack::Ptr>& doc_all);
-    void searchRequestFailed(QString reason);
+    void searchRequestFailed(QString reason, int network_error_code);
     void searchRequestForOneSucceeded(ModPlatform::IndexedPack::Ptr);
 
    protected slots:
@@ -98,7 +98,7 @@ class ModpackListModel : public QAbstractListModel {
    protected:
     void requestLogo(QString file, QString url);
 
-    inline auto getMineVersions() const -> std::list<Version>;
+    inline auto getMineVersions() const -> std::vector<Version>;
 
    protected:
     ModrinthPage* m_parent;

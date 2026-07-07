@@ -94,7 +94,7 @@ class Task : public QObject, public QRunnable {
 
    public:
     explicit Task(bool show_debug_log = true);
-    virtual ~Task() = default;
+    ~Task() override;
 
     bool isRunning() const;
     bool isFinished() const;
@@ -127,6 +127,9 @@ class Task : public QObject, public QRunnable {
 
     QUuid getUid() { return m_uid; }
 
+    // Copies the other task's status, details, progress, and step progress to this task; and sets up connections for future propagation
+    void propagateFromOther(Task* other);
+
    protected:
     void logWarning(const QString& line);
 
@@ -151,6 +154,8 @@ class Task : public QObject, public QRunnable {
     //! Emitted when the canAbort() status has changed. */
     void abortStatusChanged(bool can_abort);
 
+    void abortButtonTextChanged(QString text);
+
    public slots:
     // QRunnable's interface
     void run() override { start(); }
@@ -160,7 +165,7 @@ class Task : public QObject, public QRunnable {
     //! used by external code to ask the task to abort
     virtual bool abort()
     {
-        if (canAbort())
+        if (canAbort() && isRunning())
             emitAborted();
         return canAbort();
     }
@@ -169,6 +174,11 @@ class Task : public QObject, public QRunnable {
     {
         m_can_abort = can_abort;
         emit abortStatusChanged(can_abort);
+    }
+
+    void setAbortButtonText(QString text)
+    {
+        emit abortButtonTextChanged(text);
     }
 
    protected:

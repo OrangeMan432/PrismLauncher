@@ -1,7 +1,7 @@
 ## Prism Launcher
 
      Prism Launcher - Minecraft Launcher
-     Copyright (C) 2022-2025 Prism Launcher Contributors
+     Copyright (C) 2022-2026 Prism Launcher Contributors
 
      This program is free software: you can redistribute it and/or modify
      it under the terms of the GNU General Public License as published by
@@ -211,30 +211,6 @@
     This Font Software is licensed under the SIL Open Font License, Version 1.1.
     This license is copied below, and is also available with a FAQ at:
     http://scripts.sil.org/OFL
-
-## Quazip
-
-    Copyright (C) 2005-2021 Sergey A. Tachenov
-
-    The QuaZip library is licensed under the GNU Lesser General Public
-    License V2.1 plus a static linking exception.
-
-    The original ZIP/UNZIP package (MiniZip) is copyrighted by Gilles
-    Vollant and contributors, see quazip/(un)zip.h files for details.
-    Basically it's the zlib license.
-
-    STATIC LINKING EXCEPTION
-
-    The copyright holders give you permission to link this library with
-    independent modules to produce an executable, regardless of the license
-    terms of these independent modules, and to copy and distribute the
-    resulting executable under terms of your choice, provided that you also
-    meet, for each linked independent module, the terms and conditions of
-    the license of that module. An independent module is a module which is
-    not derived from or based on this library. If you modify this library,
-    you must extend this exception to your version of the library.
-
-    See COPYING file for the full LGPL text.
 
 ## launcher (`libraries/launcher`)
 

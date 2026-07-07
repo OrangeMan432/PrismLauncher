@@ -292,6 +292,15 @@ bool move(const QString& source, const QString& dest);
 bool deletePath(QString path);
 
 /**
+ * Delete a folder's contents recursively but not the folder itself.
+ * @param path The path to the folder.
+ * @return Whether the deletion was completely successful.
+ */
+bool deleteContents(const QString& path);
+
+bool removeFiles(QStringList listFile);
+
+/**
  * Trash a folder / file
  */
 bool trash(QString path, QString* pathInTrash = nullptr);

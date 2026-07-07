@@ -50,19 +50,19 @@
 
 LauncherPartLaunch::LauncherPartLaunch(LaunchTask* parent)
     : LaunchStep(parent)
-    , m_process(parent->instance()->getJavaVersion().defaultsToUtf8() ? QTextCodec::codecForName("UTF-8") : QTextCodec::codecForLocale())
+    , m_process(parent->instance()->getJavaVersion().defaultsToUtf8() ? QStringConverter::Utf8 : QStringConverter::System)
 {
     if (parent->instance()->settings()->get("CloseAfterLaunch").toBool()) {
         static const QRegularExpression s_settingUser(".*Setting user.+", QRegularExpression::CaseInsensitiveOption);
         std::shared_ptr<QMetaObject::Connection> connection{ new QMetaObject::Connection };
-        *connection = connect(&m_process, &LoggedProcess::log, this,
-                              [connection](const QStringList& lines, [[maybe_unused]] MessageLevel::Enum level) {
-                                  qDebug() << lines;
-                                  if (lines.filter(s_settingUser).length() != 0) {
-                                      APPLICATION->closeAllWindows();
-                                      disconnect(*connection);
-                                  }
-                              });
+        *connection =
+            connect(&m_process, &LoggedProcess::log, this, [connection](const QStringList& lines, [[maybe_unused]] MessageLevel level) {
+                qDebug() << lines;
+                if (lines.filter(s_settingUser).length() != 0) {
+                    APPLICATION->closeAllWindows();
+                    disconnect(*connection);
+                }
+            });
     }
 
     connect(&m_process, &LoggedProcess::log, this, &LauncherPartLaunch::logLines);
@@ -94,8 +94,8 @@ void LauncherPartLaunch::executeTask()
 
     m_launchScript = instance->createLaunchScript(m_session, m_targetToJoin);
     QStringList args = instance->javaArguments();
-    QString allArgs = args.join(", ");
-    emit logLine("Java Arguments:\n[" + m_parent->censorPrivateInfo(allArgs) + "]\n\n", MessageLevel::Launcher);
+    QString allArgs = args.join(" ");
+    emit logLine("Java arguments:\n  " + m_parent->censorPrivateInfo(allArgs) + "\n", MessageLevel::Launcher);
 
     auto javaPath = FS::ResolveExecutable(instance->settings()->get("JavaPath").toString());
 
@@ -164,9 +164,9 @@ void LauncherPartLaunch::on_state(LoggedProcess::State state)
     switch (state) {
         case LoggedProcess::FailedToStart: {
             //: Error message displayed if instace can't start
-            const char* reason = QT_TR_NOOP("Could not launch Minecraft!");
-            emit logLine(reason, MessageLevel::Fatal);
-            emitFailed(tr(reason));
+            const char* reason = QT_TR_NOOP("Could not launch Minecraft: %1");
+            emit logLine(QString(reason).arg(m_process.errorString()), MessageLevel::Fatal);
+            emitFailed(tr(reason).arg(m_process.errorString()));
             return;
         }
         case LoggedProcess::Aborted:

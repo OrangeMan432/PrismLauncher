@@ -56,11 +56,14 @@ class QGridLayout;
 class PageContainer : public QWidget, public BasePageContainer {
     Q_OBJECT
    public:
-    explicit PageContainer(BasePageProvider* pageProvider, QString defaultId = QString(), QWidget* parent = 0);
-    virtual ~PageContainer() {}
+    explicit PageContainer(BasePageProvider* pageProvider, QString defaultId = QString(), QWidget* parent = nullptr);
+    ~PageContainer() override = default;
 
     void addButtons(QWidget* buttons);
     void addButtons(QLayout* buttons);
+
+    void useSidebarStyle(bool sidebar);
+
     /*
      * Save any unsaved state and prepare to be closed.
      * @return true if everything can be saved, false if there is something that requires attention

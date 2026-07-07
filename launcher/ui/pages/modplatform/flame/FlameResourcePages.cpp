@@ -41,7 +41,7 @@
 #include <QList>
 #include <memory>
 #include "modplatform/flame/FlameAPI.h"
-#include "ui_ResourcePage.h"
+#include "../ui_ResourcePage.h"
 
 #include "FlameResourceModels.h"
 #include "ui/dialogs/ResourceDownloadDialog.h"
@@ -247,10 +247,10 @@ std::unique_ptr<ModFilterWidget> FlameModPage::createFilterWidget()
 
 void FlameModPage::prepareProviderCategories()
 {
-    auto response = std::make_shared<QByteArray>();
-    m_categoriesTask = FlameAPI::getModCategories(response);
+    auto [task, response] = FlameAPI::getModCategories();
+    m_categoriesTask = task;
     connect(m_categoriesTask.get(), &Task::succeeded, [this, response]() {
-        auto categories = FlameAPI::loadModCategories(response);
+        auto categories = FlameAPI::loadModCategories(*response);
         m_filter_widget->setCategories(categories);
     });
     m_categoriesTask->start();

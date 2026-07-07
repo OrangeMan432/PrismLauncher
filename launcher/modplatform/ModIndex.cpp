@@ -25,13 +25,17 @@
 
 namespace ModPlatform {
 
-static const QMap<QString, IndexedVersionType::VersionType> s_indexed_version_type_names = {
-    { "release", IndexedVersionType::VersionType::Release },
-    { "beta", IndexedVersionType::VersionType::Beta },
-    { "alpha", IndexedVersionType::VersionType::Alpha }
-};
+ModLoaderType operator|(ModLoaderType lhs, ModLoaderType rhs)
+{
+    return static_cast<ModLoaderType>(static_cast<std::uint16_t>(lhs) | static_cast<std::uint16_t>(rhs));
+}
 
-static const QList<ModLoaderType> loaderList = { NeoForge, Forge, Cauldron, LiteLoader, Quilt, Fabric, Babric, BTA, LegacyFabric, Ornithe, Rift };
+static const QMap<QString, IndexedVersionType> s_indexed_version_type_names = { { "release", IndexedVersionType::Release },
+                                                                                { "beta", IndexedVersionType::Beta },
+                                                                                { "alpha", IndexedVersionType::Alpha } };
+
+static const QList<ModLoaderType> loaderList = { NeoForge, Forge, Cauldron,     LiteLoader, Quilt, Fabric,
+                                                 Babric,   BTA,   LegacyFabric, Ornithe,    Rift };
 
 QList<ModLoaderType> modLoaderTypesToList(ModLoaderTypes flags)
 {
@@ -44,32 +48,14 @@ QList<ModLoaderType> modLoaderTypesToList(ModLoaderTypes flags)
     return flagList;
 }
 
-IndexedVersionType::IndexedVersionType(const QString& type) : IndexedVersionType(enumFromString(type)) {}
-
-IndexedVersionType::IndexedVersionType(const IndexedVersionType::VersionType& type)
+QString IndexedVersionType::toString() const
 {
-    m_type = type;
+    return s_indexed_version_type_names.key(m_type, "unknown");
 }
 
-IndexedVersionType::IndexedVersionType(const IndexedVersionType& other)
+IndexedVersionType IndexedVersionType::fromString(const QString& type)
 {
-    m_type = other.m_type;
-}
-
-IndexedVersionType& IndexedVersionType::operator=(const IndexedVersionType& other)
-{
-    m_type = other.m_type;
-    return *this;
-}
-
-const QString IndexedVersionType::toString(const IndexedVersionType::VersionType& type)
-{
-    return s_indexed_version_type_names.key(type, "unknown");
-}
-
-IndexedVersionType::VersionType IndexedVersionType::enumFromString(const QString& type)
-{
-    return s_indexed_version_type_names.value(type, IndexedVersionType::VersionType::Unknown);
+    return s_indexed_version_type_names.value(type, IndexedVersionType::Unknown);
 }
 
 const char* ProviderCapabilities::name(ResourceProvider p)
@@ -196,5 +182,41 @@ Side SideUtils::fromString(QString side)
     if (side == "both")
         return Side::UniversalSide;
     return Side::UniversalSide;
+}
+
+QString DependencyTypeUtils::toString(DependencyType type)
+{
+    switch (type) {
+        case DependencyType::REQUIRED:
+            return "REQUIRED";
+        case DependencyType::OPTIONAL:
+            return "OPTIONAL";
+        case DependencyType::INCOMPATIBLE:
+            return "INCOMPATIBLE";
+        case DependencyType::EMBEDDED:
+            return "EMBEDDED";
+        case DependencyType::TOOL:
+            return "TOOL";
+        case DependencyType::INCLUDE:
+            return "INCLUDE";
+        case DependencyType::UNKNOWN:
+            return "UNKNOWN";
+    }
+    return "UNKNOWN";
+}
+
+DependencyType DependencyTypeUtils::fromString(const QString& str)
+{
+    static const QHash<QString, DependencyType> map = {
+        { "REQUIRED", DependencyType::REQUIRED },
+        { "OPTIONAL", DependencyType::OPTIONAL },
+        { "INCOMPATIBLE", DependencyType::INCOMPATIBLE },
+        { "EMBEDDED", DependencyType::EMBEDDED },
+        { "TOOL", DependencyType::TOOL },
+        { "INCLUDE", DependencyType::INCLUDE },
+        { "UNKNOWN", DependencyType::UNKNOWN },
+    };
+
+    return map.value(str.toUpper(), DependencyType::UNKNOWN);
 }
 }  // namespace ModPlatform

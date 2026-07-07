@@ -1,30 +1,36 @@
 #include <QFutureWatcher>
 
 #include <Json.h>
+#include "Exception.h"
 #include "McClient.h"
 #include "McResolver.h"
 #include "ServerPingTask.h"
 
 unsigned getOnlinePlayers(QJsonObject data)
 {
-    return Json::requireInteger(Json::requireObject(data, "players"), "online");
+    try {
+        return Json::requireInteger(Json::requireObject(data, "players"), "online");
+    } catch (Exception& e) {
+        qWarning() << "server ping failed to parse response" << e.what();
+        return 0;
+    }
 }
 
 void ServerPingTask::executeTask()
 {
-    qDebug() << "Querying status of " << QString("%1:%2").arg(m_domain).arg(m_port);
+    qDebug() << "Querying status of" << QString("%1:%2").arg(m_domain).arg(m_port);
 
     // Resolve the actual IP and port for the server
     McResolver* resolver = new McResolver(nullptr, m_domain, m_port);
     connect(resolver, &McResolver::succeeded, this, [this](QString ip, int port) {
-        qDebug() << "Resolved Address for" << m_domain << ": " << ip << ":" << port;
+        qDebug().nospace().noquote() << "Resolved address for " << m_domain << ": " << ip << ":" << port;
 
         // Now that we have the IP and port, query the server
         McClient* client = new McClient(nullptr, m_domain, ip, port);
 
         connect(client, &McClient::succeeded, this, [this](QJsonObject data) {
             m_outputOnlinePlayers = getOnlinePlayers(data);
-            qDebug() << "Online players: " << m_outputOnlinePlayers;
+            qDebug() << "Online players:" << m_outputOnlinePlayers;
             emitSucceeded();
         });
         connect(client, &McClient::failed, this, [this](QString error) { emitFailed(error); });

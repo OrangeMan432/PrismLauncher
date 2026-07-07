@@ -99,7 +99,7 @@ void EnsureMetadataTask::executeTask()
         }
 
         // They already have the right metadata :o
-        if (resource->status() != ResourceStatus::NO_METADATA && resource->metadata() && resource->metadata()->provider == m_provider) {
+        if (resource->status() != ResourceStatus::NoMetadata && resource->metadata() && resource->metadata()->provider == m_provider) {
             qDebug() << "Resource" << resource->name() << "already has metadata!";
             emitReady(resource);
             continue;
@@ -215,8 +215,7 @@ Task::Ptr EnsureMetadataTask::modrinthVersionsTask()
 {
     auto hash_type = ModPlatform::ProviderCapabilities::hashType(ModPlatform::ResourceProvider::MODRINTH).first();
 
-    auto response = std::make_shared<QByteArray>();
-    auto ver_task = modrinth_api.currentVersions(m_resources.keys(), hash_type, response);
+    auto [ver_task, response] = modrinth_api.currentVersions(m_resources.keys(), hash_type);
 
     // Prevents unfortunate timings when aborting the task
     if (!ver_task)
@@ -226,8 +225,8 @@ Task::Ptr EnsureMetadataTask::modrinthVersionsTask()
         QJsonParseError parse_error{};
         QJsonDocument doc = QJsonDocument::fromJson(*response, &parse_error);
         if (parse_error.error != QJsonParseError::NoError) {
-            qWarning() << "Error while parsing JSON response from Modrinth::CurrentVersions at " << parse_error.offset
-                       << " reason: " << parse_error.errorString();
+            qWarning() << "Error while parsing JSON response from Modrinth::CurrentVersions at" << parse_error.offset
+                       << "reason:" << parse_error.errorString();
             qWarning() << *response;
 
             failed(parse_error.errorString());
@@ -264,18 +263,18 @@ Task::Ptr EnsureMetadataTask::modrinthVersionsTask()
 Task::Ptr EnsureMetadataTask::modrinthProjectsTask()
 {
     QHash<QString, QString> addonIds;
-    for (auto const& data : m_tempVersions)
+    for (const auto& data : m_tempVersions)
         addonIds.insert(data.addonId.toString(), data.hash);
 
-    auto response = std::make_shared<QByteArray>();
     Task::Ptr proj_task;
+    QByteArray* response;
 
     if (addonIds.isEmpty()) {
         qWarning() << "No addonId found!";
     } else if (addonIds.size() == 1) {
-        proj_task = modrinth_api.getProject(*addonIds.keyBegin(), response);
+        std::tie(proj_task, response) = modrinth_api.getProject(*addonIds.keyBegin());
     } else {
-        proj_task = modrinth_api.getProjects(addonIds.keys(), response);
+        std::tie(proj_task, response) = modrinth_api.getProjects(addonIds.keys());
     }
 
     // Prevents unfortunate timings when aborting the task
@@ -286,8 +285,8 @@ Task::Ptr EnsureMetadataTask::modrinthProjectsTask()
         QJsonParseError parse_error{};
         auto doc = QJsonDocument::fromJson(*response, &parse_error);
         if (parse_error.error != QJsonParseError::NoError) {
-            qWarning() << "Error while parsing JSON response from Modrinth projects task at " << parse_error.offset
-                       << " reason: " << parse_error.errorString();
+            qWarning() << "Error while parsing JSON response from Modrinth projects task at" << parse_error.offset
+                       << "reason:" << parse_error.errorString();
             qWarning() << *response;
             return;
         }
@@ -341,21 +340,19 @@ Task::Ptr EnsureMetadataTask::modrinthProjectsTask()
 // Flame
 Task::Ptr EnsureMetadataTask::flameVersionsTask()
 {
-    auto response = std::make_shared<QByteArray>();
-
     QList<uint> fingerprints;
     for (auto& murmur : m_resources.keys()) {
         fingerprints.push_back(murmur.toUInt());
     }
 
-    auto ver_task = flame_api.matchFingerprints(fingerprints, response);
+    auto [ver_task, response] = flame_api.matchFingerprints(fingerprints);
 
     connect(ver_task.get(), &Task::succeeded, this, [this, response] {
         QJsonParseError parse_error{};
         QJsonDocument doc = QJsonDocument::fromJson(*response, &parse_error);
         if (parse_error.error != QJsonParseError::NoError) {
-            qWarning() << "Error while parsing JSON response from Modrinth::CurrentVersions at " << parse_error.offset
-                       << " reason: " << parse_error.errorString();
+            qWarning() << "Error while parsing JSON response from Flame::CurrentVersions at" << parse_error.offset
+                       << "reason:" << parse_error.errorString();
             qWarning() << *response;
 
             failed(parse_error.errorString());
@@ -407,7 +404,7 @@ Task::Ptr EnsureMetadataTask::flameVersionsTask()
 Task::Ptr EnsureMetadataTask::flameProjectsTask()
 {
     QHash<QString, QString> addonIds;
-    for (auto const& hash : m_resources.keys()) {
+    for (const auto& hash : m_resources.keys()) {
         if (m_tempVersions.contains(hash)) {
             auto data = m_tempVersions.find(hash).value();
 
@@ -417,15 +414,15 @@ Task::Ptr EnsureMetadataTask::flameProjectsTask()
         }
     }
 
-    auto response = std::make_shared<QByteArray>();
     Task::Ptr proj_task;
+    QByteArray* response;
 
     if (addonIds.isEmpty()) {
         qWarning() << "No addonId found!";
     } else if (addonIds.size() == 1) {
-        proj_task = flame_api.getProject(*addonIds.keyBegin(), response);
+        std::tie(proj_task, response) = flame_api.getProject(*addonIds.keyBegin());
     } else {
-        proj_task = flame_api.getProjects(addonIds.keys(), response);
+        std::tie(proj_task, response) = flame_api.getProjects(addonIds.keys());
     }
 
     // Prevents unfortunate timings when aborting the task
@@ -436,8 +433,8 @@ Task::Ptr EnsureMetadataTask::flameProjectsTask()
         QJsonParseError parse_error{};
         auto doc = QJsonDocument::fromJson(*response, &parse_error);
         if (parse_error.error != QJsonParseError::NoError) {
-            qWarning() << "Error while parsing JSON response from Modrinth projects task at " << parse_error.offset
-                       << " reason: " << parse_error.errorString();
+            qWarning() << "Error while parsing JSON response from Flame projects task at" << parse_error.offset
+                       << "reason:" << parse_error.errorString();
             qWarning() << *response;
             return;
         }

@@ -322,6 +322,14 @@
     <enum>QAction::PreferencesRole</enum>
    </property>
   </action>
+  <action name="actionManageSkins">
+   <property name="icon">
+    <iconset theme="settings"/>
+   </property>
+   <property name="text">
+    <string>Manage &amp;Skins...</string>
+   </property>
+  </action>
   <action name="actionManageAccounts">
    <property name="icon">
     <iconset theme="accounts"/>
@@ -520,7 +528,7 @@
     <string>Close the current window</string>
    </property>
    <property name="menuRole">
-    <enum>QAction::QuitRole</enum>
+    <enum>QAction::MenuRole::NoRole</enum>
    </property>
   </action>
   <action name="actionViewInstanceFolder">
@@ -721,7 +729,7 @@
     <iconset theme="help"/>
    </property>
    <property name="text">
-    <string>%1 &amp;Help</string>
+    <string>%1 &amp;Wiki</string>
    </property>
    <property name="toolTip">
     <string>Open the %1 wiki</string>

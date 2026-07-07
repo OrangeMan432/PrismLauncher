@@ -21,15 +21,15 @@
  */
 
 #include "PrismExternalUpdater.h"
+
 #include <QCoreApplication>
-#include <QDateTime>
-#include <QDebug>
 #include <QDir>
 #include <QMessageBox>
 #include <QProcess>
 #include <QProgressDialog>
 #include <QSettings>
 #include <QTimer>
+#include <algorithm>
 #include <memory>
 
 #include "StringUtils.h"
@@ -43,42 +43,46 @@ class PrismExternalUpdater::Private {
     QDir appDir;
     QDir dataDir;
     QTimer updateTimer;
-    bool allowBeta;
-    bool autoCheck;
-    double updateInterval;
+    bool allowBeta{};
+    bool autoCheck{};
+    double updateInterval{};
     QDateTime lastCheck;
     std::unique_ptr<QSettings> settings;
 
-    QWidget* parent;
+    QWidget* parent{};
 };
 
 PrismExternalUpdater::PrismExternalUpdater(QWidget* parent, const QString& appDir, const QString& dataDir)
+    : priv(new PrismExternalUpdater::Private())
 {
-    priv = new PrismExternalUpdater::Private();
     priv->appDir = QDir(appDir);
     priv->dataDir = QDir(dataDir);
-    auto settings_file = priv->dataDir.absoluteFilePath("prismlauncher_update.cfg");
-    priv->settings = std::make_unique<QSettings>(settings_file, QSettings::Format::IniFormat);
+    auto settingsFile = priv->dataDir.absoluteFilePath("prismlauncher_update.cfg");
+    priv->settings = std::make_unique<QSettings>(settingsFile, QSettings::Format::IniFormat);
     priv->allowBeta = priv->settings->value("allow_beta", false).toBool();
-    priv->autoCheck = priv->settings->value("auto_check", false).toBool();
-    bool interval_ok;
+    priv->autoCheck = priv->settings->value("auto_check", true).toBool();
+    bool intervalOk = false;
     // default once per day
-    priv->updateInterval = priv->settings->value("update_interval", 86400).toInt(&interval_ok);
-    if (!interval_ok)
+    priv->updateInterval = priv->settings->value("update_interval", 86400).toInt(&intervalOk);
+    if (!intervalOk) {
         priv->updateInterval = 86400;
-    auto last_check = priv->settings->value("last_check");
-    if (!last_check.isNull() && last_check.isValid()) {
-        priv->lastCheck = QDateTime::fromString(last_check.toString(), Qt::ISODate);
+    }
+    if (const auto lastCheck = priv->settings->value("last_check"); !lastCheck.isNull() && lastCheck.isValid()) {
+        priv->lastCheck = QDateTime::fromString(lastCheck.toString(), Qt::ISODate);
     }
     priv->parent = parent;
     connectTimer();
     resetAutoCheckTimer();
+    if (priv->updateInterval == 0) {  // "On Launch"
+        checkForUpdates(false);
+    }
 }
 
 PrismExternalUpdater::~PrismExternalUpdater()
 {
-    if (priv->updateTimer.isActive())
+    if (priv->updateTimer.isActive()) {
         priv->updateTimer.stop();
+    }
     disconnectTimer();
     priv->settings->sync();
     delete priv;
@@ -89,33 +93,36 @@ void PrismExternalUpdater::checkForUpdates()
     checkForUpdates(true);
 }
 
-void PrismExternalUpdater::checkForUpdates(bool triggeredByUser)
+void PrismExternalUpdater::checkForUpdates(bool triggeredByUser) const
 {
     QProgressDialog progress(tr("Checking for updates..."), "", 0, 0, priv->parent);
+    progress.setMinimumDuration(0); // Appear immediately without waiting
     progress.setCancelButton(nullptr);
     progress.adjustSize();
-    progress.show();
+    if (triggeredByUser) {
+        progress.show();
+    }
     QCoreApplication::processEvents();
 
     QProcess proc;
-    auto exe_name = QStringLiteral("%1_updater").arg(BuildConfig.LAUNCHER_APP_BINARY_NAME);
-#if defined Q_OS_WIN32
-    exe_name.append(".exe");
+    auto exeName = QStringLiteral("%1_updater").arg(BuildConfig.LAUNCHER_APP_BINARY_NAME);
+#ifdef Q_OS_WIN32
+    exeName.append(".exe");
 
     auto env = QProcessEnvironment::systemEnvironment();
     env.insert("__COMPAT_LAYER", "RUNASINVOKER");
     proc.setProcessEnvironment(env);
 #else
-    exe_name = QString("bin/%1").arg(exe_name);
+    exeName = QString("bin/%1").arg(exeName);
 #endif
 
     QStringList args = { "--check-only", "--dir", priv->dataDir.absolutePath(), "--debug" };
-    if (priv->allowBeta)
+    if (priv->allowBeta) {
         args.append("--pre-release");
+    }
 
-    proc.start(priv->appDir.absoluteFilePath(exe_name), args);
-    auto result_start = proc.waitForStarted(5000);
-    if (!result_start) {
+    proc.start(priv->appDir.absoluteFilePath(exeName), args);
+    if (auto resultStart = proc.waitForStarted(5000); !resultStart) {
         auto err = proc.error();
         qDebug() << "Failed to start updater after 5 seconds."
                  << "reason:" << err << proc.errorString();
@@ -133,8 +140,7 @@ void PrismExternalUpdater::checkForUpdates(bool triggeredByUser)
     }
     QCoreApplication::processEvents();
 
-    auto result_finished = proc.waitForFinished(60000);
-    if (!result_finished) {
+    if (auto resultFinished = proc.waitForFinished(60000); !resultFinished) {
         proc.kill();
         auto err = proc.error();
         auto output = proc.readAll();
@@ -154,15 +160,15 @@ void PrismExternalUpdater::checkForUpdates(bool triggeredByUser)
         return;
     }
 
-    auto exit_code = proc.exitCode();
+    auto exitCode = proc.exitCode();
 
-    auto std_output = proc.readAllStandardOutput();
-    auto std_error = proc.readAllStandardError();
+    auto stdOutput = proc.readAllStandardOutput();
+    auto stdError = proc.readAllStandardError();
 
-    progress.hide();
+    progress.cancel();
     QCoreApplication::processEvents();
 
-    switch (exit_code) {
+    switch (exitCode) {
         case 0:
             // no update available
             if (triggeredByUser) {
@@ -177,10 +183,10 @@ void PrismExternalUpdater::checkForUpdates(bool triggeredByUser)
         case 1:
             // there was an error
             {
-                qDebug() << "Updater subprocess error" << qPrintable(std_error);
+                qDebug() << "Updater subprocess error" << qPrintable(stdError);
                 auto msgBox = QMessageBox(QMessageBox::Warning, tr("Update Check Error"),
                                           tr("There was an error running the update check."), QMessageBox::Ok, priv->parent);
-                msgBox.setDetailedText(QString(std_error));
+                msgBox.setDetailedText(QString(stdError));
                 msgBox.setMinimumWidth(460);
                 msgBox.adjustSize();
                 msgBox.exec();
@@ -189,28 +195,27 @@ void PrismExternalUpdater::checkForUpdates(bool triggeredByUser)
         case 100:
             // update available
             {
-                auto [first_line, remainder1] = StringUtils::splitFirst(std_output, '\n');
-                auto [second_line, remainder2] = StringUtils::splitFirst(remainder1, '\n');
-                auto [third_line, release_notes] = StringUtils::splitFirst(remainder2, '\n');
-                auto version_name = StringUtils::splitFirst(first_line, ": ").second.trimmed();
-                auto version_tag = StringUtils::splitFirst(second_line, ": ").second.trimmed();
-                auto release_timestamp = QDateTime::fromString(StringUtils::splitFirst(third_line, ": ").second.trimmed(), Qt::ISODate);
-                qDebug() << "Update available:" << version_name << version_tag << release_timestamp;
-                qDebug() << "Update release notes:" << release_notes;
+                auto [firstLine, remainder1] = StringUtils::splitFirst(stdOutput, '\n');
+                auto [secondLine, remainder2] = StringUtils::splitFirst(remainder1, '\n');
+                auto [thirdLine, releaseNotes] = StringUtils::splitFirst(remainder2, '\n');
+                auto versionName = StringUtils::splitFirst(firstLine, ": ").second.trimmed();
+                auto versionTag = StringUtils::splitFirst(secondLine, ": ").second.trimmed();
+                auto releaseTimestamp = QDateTime::fromString(StringUtils::splitFirst(thirdLine, ": ").second.trimmed(), Qt::ISODate);
+                qDebug() << "Update available:" << versionName << versionTag << releaseTimestamp;
+                qDebug() << "Update release notes:" << releaseNotes;
 
-                offerUpdate(version_name, version_tag, release_notes);
+                offerUpdate(versionName, versionTag, releaseNotes, triggeredByUser);
             }
             break;
         default:
             // unknown error code
             {
-                qDebug() << "Updater exited with unknown code" << exit_code;
-                auto msgBox =
-                    QMessageBox(QMessageBox::Information, tr("Unknown Update Error"),
-                                tr("The updater exited with an unknown condition.\nExit Code: %1").arg(QString::number(exit_code)),
-                                QMessageBox::Ok, priv->parent);
-                auto detail_txt = tr("StdOut: %1\nStdErr: %2").arg(QString(std_output)).arg(QString(std_error));
-                msgBox.setDetailedText(detail_txt);
+                qDebug() << "Updater exited with unknown code" << exitCode;
+                auto msgBox = QMessageBox(QMessageBox::Information, tr("Unknown Update Error"),
+                                          tr("The updater exited with an unknown condition.\nExit Code: %1").arg(QString::number(exitCode)),
+                                          QMessageBox::Ok, priv->parent);
+                auto detailTxt = tr("StdOut: %1\nStdErr: %2").arg(QString(stdOutput)).arg(QString(stdError));
+                msgBox.setDetailedText(detailTxt);
                 msgBox.setMinimumWidth(460);
                 msgBox.adjustSize();
                 msgBox.exec();
@@ -260,23 +265,27 @@ void PrismExternalUpdater::setBetaAllowed(bool allowed)
     priv->settings->sync();
 }
 
-void PrismExternalUpdater::resetAutoCheckTimer()
+void PrismExternalUpdater::resetAutoCheckTimer() const
 {
     if (priv->autoCheck && priv->updateInterval > 0) {
-        int timeoutDuration = 0;
         auto now = QDateTime::currentDateTime();
+
+        qint64 timeoutMs = 0;
+
         if (priv->lastCheck.isValid()) {
-            auto diff = priv->lastCheck.secsTo(now);
-            auto secs_left = priv->updateInterval - diff;
-            if (secs_left < 0)
-                secs_left = 0;
-            timeoutDuration = secs_left * 1000;  // to msec
+            const qint64 diff = priv->lastCheck.secsTo(now);
+            const qint64 secsLeft = std::max<qint64>(priv->updateInterval - diff, 0);
+            timeoutMs = secsLeft * 1000;
         }
-        qDebug() << "Auto update timer starting," << timeoutDuration / 1000 << "seconds left";
-        priv->updateTimer.start(timeoutDuration);
+
+        timeoutMs = std::min(timeoutMs, static_cast<qint64>(INT_MAX));
+
+        qDebug() << "Auto update timer starting," << timeoutMs / 1000 << "seconds left";
+        priv->updateTimer.start(static_cast<int>(timeoutMs));
     } else {
-        if (priv->updateTimer.isActive())
+        if (priv->updateTimer.isActive()) {
             priv->updateTimer.stop();
+        }
     }
 }
 
@@ -290,68 +299,72 @@ void PrismExternalUpdater::disconnectTimer()
     disconnect(&priv->updateTimer, &QTimer::timeout, this, &PrismExternalUpdater::autoCheckTimerFired);
 }
 
-void PrismExternalUpdater::autoCheckTimerFired()
+void PrismExternalUpdater::autoCheckTimerFired() const
 {
     qDebug() << "Auto update Timer fired";
     checkForUpdates(false);
 }
 
-void PrismExternalUpdater::offerUpdate(const QString& version_name, const QString& version_tag, const QString& release_notes)
+void PrismExternalUpdater::offerUpdate(const QString& versionName,
+                                       const QString& versionTag,
+                                       const QString& releaseNotes,
+                                       const bool triggeredByUser) const
 {
     priv->settings->beginGroup("skip");
-    auto should_skip = priv->settings->value(version_tag, false).toBool();
+    auto shouldSkip = !triggeredByUser && priv->settings->value(versionTag, false).toBool();
     priv->settings->endGroup();
 
-    if (should_skip) {
-        auto msgBox = QMessageBox(QMessageBox::Information, tr("No Update Available"), tr("There are no new updates available."),
-                                  QMessageBox::Ok, priv->parent);
-        msgBox.setMinimumWidth(460);
-        msgBox.adjustSize();
-        msgBox.exec();
+    if (shouldSkip) {
+        if (triggeredByUser) {
+            auto msgBox = QMessageBox(QMessageBox::Information, tr("No Update Available"), tr("There are no new updates available."),
+                                      QMessageBox::Ok, priv->parent);
+            msgBox.setMinimumWidth(460);
+            msgBox.adjustSize();
+            msgBox.exec();
+        }
         return;
     }
 
-    UpdateAvailableDialog dlg(BuildConfig.printableVersionString(), version_name, release_notes);
+    UpdateAvailableDialog dlg(BuildConfig.printableVersionString(), versionName, releaseNotes);
 
     auto result = dlg.exec();
     qDebug() << "offer dlg result" << result;
-    switch (result) {
-        case UpdateAvailableDialog::Install: {
-            performUpdate(version_tag);
-            return;
+
+    priv->settings->beginGroup("skip");
+    if (result == UpdateAvailableDialog::Skip) {
+        priv->settings->setValue(versionTag, true);
+    } else {
+        if (result == UpdateAvailableDialog::Install) {
+            performUpdate(versionTag);
         }
-        case UpdateAvailableDialog::Skip: {
-            priv->settings->beginGroup("skip");
-            priv->settings->setValue(version_tag, true);
-            priv->settings->endGroup();
-            priv->settings->sync();
-            return;
-        }
-        case UpdateAvailableDialog::DontInstall: {
-            return;
-        }
+        priv->settings->remove(versionTag);
     }
+    priv->settings->endGroup();
+    priv->settings->sync();
 }
 
-void PrismExternalUpdater::performUpdate(const QString& version_tag)
+void PrismExternalUpdater::performUpdate(const QString& versionTag) const
 {
     QProcess proc;
-    auto exe_name = QStringLiteral("%1_updater").arg(BuildConfig.LAUNCHER_APP_BINARY_NAME);
-#if defined Q_OS_WIN32
-    exe_name.append(".exe");
+    auto exeName = QStringLiteral("%1_updater").arg(BuildConfig.LAUNCHER_APP_BINARY_NAME);
+#ifdef Q_OS_WIN32
+    exeName.append(".exe");
 
     auto env = QProcessEnvironment::systemEnvironment();
     env.insert("__COMPAT_LAYER", "RUNASINVOKER");
     proc.setProcessEnvironment(env);
 #else
-    exe_name = QString("bin/%1").arg(exe_name);
+    exeName = QString("bin/%1").arg(exeName);
 #endif
 
-    QStringList args = { "--dir", priv->dataDir.absolutePath(), "--install-version", version_tag };
-    if (priv->allowBeta)
+    QStringList args = { "--dir", priv->dataDir.absolutePath(), "--install-version", versionTag };
+    if (priv->allowBeta) {
         args.append("--pre-release");
+    }
 
-    auto result = proc.startDetached(priv->appDir.absoluteFilePath(exe_name), args);
+    proc.setProgram(priv->appDir.absoluteFilePath(exeName));
+    proc.setArguments(args);
+    auto result = proc.startDetached();
     if (!result) {
         qDebug() << "Failed to start updater:" << proc.error() << proc.errorString();
     }

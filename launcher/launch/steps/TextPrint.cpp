@@ -1,11 +1,11 @@
 #include "TextPrint.h"
 
-TextPrint::TextPrint(LaunchTask* parent, const QStringList& lines, MessageLevel::Enum level) : LaunchStep(parent)
+TextPrint::TextPrint(LaunchTask* parent, const QStringList& lines, MessageLevel level) : LaunchStep(parent)
 {
     m_lines = lines;
     m_level = level;
 }
-TextPrint::TextPrint(LaunchTask* parent, const QString& line, MessageLevel::Enum level) : LaunchStep(parent)
+TextPrint::TextPrint(LaunchTask* parent, const QString& line, MessageLevel level) : LaunchStep(parent)
 {
     m_lines.append(line);
     m_level = level;
@@ -24,6 +24,6 @@ bool TextPrint::canAbort() const
 
 bool TextPrint::abort()
 {
-    emitFailed("Aborted.");
+    emitAborted();
     return true;
 }

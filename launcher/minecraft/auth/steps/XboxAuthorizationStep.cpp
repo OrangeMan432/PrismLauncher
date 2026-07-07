@@ -2,7 +2,7 @@
 
 #include <QJsonDocument>
 #include <QJsonParseError>
-#include <QNetworkRequest>
+#include <utility>
 
 #include "Application.h"
 #include "Logging.h"
@@ -12,7 +12,7 @@
 #include "net/Upload.h"
 
 XboxAuthorizationStep::XboxAuthorizationStep(AccountData* data, Token* token, QString relyingParty, QString authorizationKind)
-    : AuthStep(data), m_token(token), m_relyingParty(relyingParty), m_authorizationKind(authorizationKind)
+    : AuthStep(data), m_token(token), m_relyingParty(std::move(relyingParty)), m_authorizationKind(std::move(authorizationKind))
 {}
 
 QString XboxAuthorizationStep::describe()
@@ -22,7 +22,7 @@ QString XboxAuthorizationStep::describe()
 
 void XboxAuthorizationStep::perform()
 {
-    QString xbox_auth_template = R"XXX(
+    const QString xboxAuthTemplate = R"XXX(
 {
     "Properties": {
         "SandboxId": "RETAIL",
@@ -34,41 +34,40 @@ void XboxAuthorizationStep::perform()
     "TokenType": "JWT"
 }
 )XXX";
-    auto xbox_auth_data = xbox_auth_template.arg(m_data->userToken.token, m_relyingParty);
+    const auto xboxAuthData = xboxAuthTemplate.arg(m_data->userToken.token, m_relyingParty);
     // http://xboxlive.com
-    QUrl url("https://xsts.auth.xboxlive.com/xsts/authorize");
-    auto headers = QList<Net::HeaderPair>{
-        { "Content-Type", "application/json" },
-        { "Accept", "application/json" },
-    };
-    m_response.reset(new QByteArray());
-    m_request = Net::Upload::makeByteArray(url, m_response, xbox_auth_data.toUtf8());
-    m_request->addHeaderProxy(new Net::RawHeaderProxy(headers));
+    const QUrl url("https://xsts.auth.xboxlive.com/xsts/authorize");
+    auto headers = QList<Net::HeaderPair>{ { .headerName = "Content-Type", .headerValue = "application/json" },
+                                           { .headerName = "Accept", .headerValue = "application/json" },
+                                           { .headerName = "x-xbl-contract-version", .headerValue = "1" } };
+    auto [request, response] = Net::Upload::makeByteArray(url, xboxAuthData.toUtf8());
+    m_request = request;
+    m_request->addHeaderProxy(std::make_unique<Net::RawHeaderProxy>(headers));
+    m_request->enableAutoRetry(true);
 
     m_task.reset(new NetJob("XboxAuthorizationStep", APPLICATION->network()));
     m_task->setAskRetry(false);
     m_task->addNetAction(m_request);
 
-    connect(m_task.get(), &Task::finished, this, &XboxAuthorizationStep::onRequestDone);
+    connect(m_task.get(), &Task::finished, this, [this, response] { onRequestDone(response); });
 
     m_task->start();
-    qDebug() << "Getting authorization token for " << m_relyingParty;
+    qDebug() << "Getting authorization token for" << m_relyingParty;
 }
 
-void XboxAuthorizationStep::onRequestDone()
+void XboxAuthorizationStep::onRequestDone(QByteArray* response)
 {
-    qCDebug(authCredentials()) << *m_response;
+    qCDebug(authCredentials()) << *response;
     if (m_request->error() != QNetworkReply::NoError) {
         qWarning() << "Reply error:" << m_request->error();
-        if (Net::isApplicationError(m_request->error())) {
-            if (!processSTSError()) {
-                emit finished(AccountTaskState::STATE_FAILED_SOFT,
-                              tr("Failed to get authorization for %1 services. Error %2.").arg(m_authorizationKind, m_request->error()));
-            } else {
-                emit finished(AccountTaskState::STATE_FAILED_SOFT,
-                              tr("Unknown STS error for %1 services: %2").arg(m_authorizationKind, m_request->errorString()));
+        if (Net::isApplicationError(m_request->error()) && !Net::isServerError(m_request->error())) {
+            if (processSTSError(*response)) {
+                return;
             }
+            emit finished(AccountTaskState::STATE_FAILED_SOFT,
+                          tr("Unknown STS error for %1 services: %2").arg(m_authorizationKind, m_request->errorString()));
         } else {
+            m_data->networkError = m_request->error();
             emit finished(AccountTaskState::STATE_OFFLINE,
                           tr("Failed to get authorization for %1 services: %2").arg(m_authorizationKind, m_request->errorString()));
         }
@@ -76,7 +75,7 @@ void XboxAuthorizationStep::onRequestDone()
     }
 
     Token temp;
-    if (!Parsers::parseXTokenResponse(*m_response, temp, m_authorizationKind)) {
+    if (!Parsers::parseXTokenResponse(*response, temp, m_authorizationKind)) {
         emit finished(AccountTaskState::STATE_FAILED_SOFT,
                       tr("Could not parse authorization response for access to %1 services.").arg(m_authorizationKind));
         return;
@@ -93,13 +92,13 @@ void XboxAuthorizationStep::onRequestDone()
     emit finished(AccountTaskState::STATE_WORKING, tr("Got authorization to access %1").arg(m_relyingParty));
 }
 
-bool XboxAuthorizationStep::processSTSError()
+bool XboxAuthorizationStep::processSTSError(const QByteArray& response)
 {
     if (m_request->error() == QNetworkReply::AuthenticationRequiredError) {
         QJsonParseError jsonError;
-        QJsonDocument doc = QJsonDocument::fromJson(*m_response, &jsonError);
-        if (jsonError.error) {
-            qWarning() << "Cannot parse error XSTS response as JSON: " << jsonError.errorString();
+        const QJsonDocument doc = QJsonDocument::fromJson(response, &jsonError);
+        if (jsonError.error != QJsonParseError::NoError) {
+            qWarning() << "Cannot parse error XSTS response as JSON:" << jsonError.errorString();
             emit finished(AccountTaskState::STATE_FAILED_SOFT,
                           tr("Cannot parse %1 authorization error response as JSON: %2").arg(m_authorizationKind, jsonError.errorString()));
             return true;
@@ -115,13 +114,13 @@ bool XboxAuthorizationStep::processSTSError()
         switch (errorCode) {
             case 2148916233: {
                 emit finished(AccountTaskState::STATE_FAILED_SOFT,
-                              tr("This Microsoft account does not have an XBox Live profile. Buy the game on %1 first.")
+                              tr("This Microsoft account does not have an Xbox Live profile. Buy the game on %1 first.")
                                   .arg("<a href=\"https://www.minecraft.net/en-us/store/minecraft-java-edition\">minecraft.net</a>"));
                 return true;
             }
             case 2148916235: {
                 // NOTE: this is the Grulovia error
-                emit finished(AccountTaskState::STATE_FAILED_SOFT, tr("XBox Live is not available in your country. You've been blocked."));
+                emit finished(AccountTaskState::STATE_FAILED_SOFT, tr("Xbox Live is not available in your country. You've been blocked."));
                 return true;
             }
             case 2148916238: {

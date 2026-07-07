@@ -6,6 +6,7 @@
   glfw3-minecraft,
   jdk17,
   jdk21,
+  jdk25,
   jdk8,
   kdePackages,
   lib,
@@ -34,6 +35,7 @@
   controllerSupport ? stdenv.hostPlatform.isLinux,
   gamemodeSupport ? stdenv.hostPlatform.isLinux,
   jdks ? [
+    jdk25
     jdk21
     jdk17
     jdk8
@@ -51,7 +53,7 @@ assert lib.assertMsg (
 ) "textToSpeechSupport only has an effect on Linux.";
 
 let
-  prismlauncher' = prismlauncher-unwrapped.override { inherit msaClientID gamemodeSupport; };
+  prismlauncher' = prismlauncher-unwrapped.override { inherit msaClientID; };
 in
 
 symlinkJoin {
@@ -63,6 +65,7 @@ symlinkJoin {
 
   buildInputs = [
     kdePackages.qtbase
+    kdePackages.qtimageformats
     kdePackages.qtsvg
   ]
   ++ lib.optional (

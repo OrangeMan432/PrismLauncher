@@ -41,11 +41,11 @@
 #include "tasks/ConcurrentTask.h"
 #if defined(LAUNCHER_APPLICATION)
 #include "Application.h"
-#include "ui/dialogs/CustomMessageBox.h"
+#include "settings/SettingsObject.h"
+#include "ui/dialogs/NetworkJobFailedDialog.h"
 #endif
 
-NetJob::NetJob(QString job_name, shared_qobject_ptr<QNetworkAccessManager> network, int max_concurrent)
-    : ConcurrentTask(job_name), m_network(network)
+NetJob::NetJob(QString job_name, QNetworkAccessManager* network, int max_concurrent) : ConcurrentTask(job_name), m_network(network)
 {
 #if defined(LAUNCHER_APPLICATION)
     if (APPLICATION_DYN && max_concurrent < 0)
@@ -69,11 +69,15 @@ void NetJob::executeNextSubTask()
     // We're finished, check for failures and retry if we can (up to 3 times)
     if (isRunning() && m_queue.isEmpty() && m_doing.isEmpty() && !m_failed.isEmpty() && m_try < 3) {
         m_try += 1;
-        while (!m_failed.isEmpty()) {
-            auto task = m_failed.take(*m_failed.keyBegin());
-            m_done.remove(task.get());
-            m_queue.enqueue(task);
-        }
+        m_failed.removeIf([this](QHash<Task*, Task::Ptr>::iterator task) {
+            // there is no point in retying on 404 Not Found
+            if (static_cast<Net::NetRequest*>(task->get())->replyStatusCode() == 404) {
+                return false;
+            }
+            m_done.remove(task->get());
+            m_queue.enqueue(*task);
+            return true;
+        });
     }
     ConcurrentTask::executeNextSubTask();
 }
@@ -100,12 +104,17 @@ auto NetJob::canAbort() const -> bool
 
 auto NetJob::abort() -> bool
 {
-    bool fullyAborted = true;
-
     // fail all downloads on the queue
     for (auto task : m_queue)
         m_failed.insert(task.get(), task);
     m_queue.clear();
+
+    if (m_doing.isEmpty()) {
+        // no downloads to abort, NetJob is not running
+        return true;
+    }
+
+    bool fullyAborted = true;
 
     // abort active downloads
     auto toKill = m_doing.values();
@@ -164,23 +173,29 @@ void NetJob::emitFailed(QString reason)
 
     if (APPLICATION_DYN && m_ask_retry && m_manual_try < APPLICATION->settings()->get("NumberOfManualRetries").toInt() && isOnline()) {
         m_manual_try++;
-        auto response = CustomMessageBox::selectable(nullptr, "Confirm retry",
-                                                     "The tasks failed.\n"
-                                                     "Failed urls\n" +
-                                                         getFailedFiles().join("\n\t") +
-                                                         ".\n"
-                                                         "If this continues to happen please check the logs of the application.\n"
-                                                         "Do you want to retry?",
-                                                     QMessageBox::Warning, QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
-                            ->exec();
+        auto failed = getFailedActions();
+        auto dialog = new NetworkJobFailedDialog(objectName(), m_try, m_done.size(), failed.size(), nullptr);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
 
-        if (response == QMessageBox::Yes) {
-            m_try = 0;
-            executeNextSubTask();
-            return;
+        for (const auto& request : failed) {
+            dialog->addFailedRequest(request->url(), request->errorString());
         }
+
+        dialog->open();
+
+        connect(dialog, &QDialog::finished, this, [this, reason = std::move(reason)](int result) {
+            if (result == QDialog::Accepted) {
+                m_try = 0;
+                executeNextSubTask();
+            } else {
+                ConcurrentTask::emitFailed(reason);
+            }
+        });
+
+        return;
     }
 #endif
+
     ConcurrentTask::emitFailed(reason);
 }
 

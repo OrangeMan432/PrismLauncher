@@ -41,12 +41,13 @@
 
 #include "settings/Setting.h"
 
-class QFileSystemModel;
 class QIdentityProxyModel;
 class QItemSelection;
 namespace Ui {
 class ScreenshotsPage;
 }
+
+class ScreenshotsFSModel;
 
 struct ScreenShot;
 class ScreenshotList;
@@ -77,18 +78,18 @@ class ScreenshotsPage : public QMainWindow, public BasePage {
 
    private slots:
     void on_actionUpload_triggered();
-    void on_actionCopy_Image_triggered();
-    void on_actionCopy_File_s_triggered();
+    void on_actionCopy_Image_triggered() const;
+    void on_actionCopy_File_s_triggered() const;
     void on_actionDelete_triggered();
-    void on_actionRename_triggered();
-    void on_actionView_Folder_triggered();
-    void onItemActivated(QModelIndex);
-    void onCurrentSelectionChanged(const QItemSelection& selected);
-    void ShowContextMenu(const QPoint& pos);
+    void on_actionRename_triggered() const;
+    void on_actionView_Folder_triggered() const;
+    void onItemActivated(QModelIndex) const;
+    void onCurrentSelectionChanged(const QItemSelection& selected) const;
+    void showContextMenu(const QPoint& pos);
 
    private:
     Ui::ScreenshotsPage* ui;
-    std::shared_ptr<QFileSystemModel> m_model;
+    std::shared_ptr<ScreenshotsFSModel> m_model;
     std::shared_ptr<QIdentityProxyModel> m_filterModel;
     QString m_folder;
     bool m_valid = false;

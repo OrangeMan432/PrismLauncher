@@ -1,6 +1,9 @@
-cmake_minimum_required(VERSION 3.22)  # minimum version required by Qt
+cmake_minimum_required(VERSION 3.25) # Required for features like `CMAKE_MSVC_DEBUG_INFORMATION_FORMAT`
 
-project(Launcher)
+project(Launcher LANGUAGES C CXX)
+if(APPLE)
+    enable_language(OBJC OBJCXX)
+endif()
 
 string(COMPARE EQUAL "${CMAKE_SOURCE_DIR}" "${CMAKE_BUILD_DIR}" IS_IN_SOURCE_BUILD)
 if(IS_IN_SOURCE_BUILD)
@@ -10,6 +13,10 @@ endif()
 ##################################### Set CMake options #####################################
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTOGEN_ORIGIN_DEPENDS OFF)
+set(CMAKE_GLOBAL_AUTOGEN_TARGET ON)
+set(CMAKE_GLOBAL_AUTORCC_TARGET ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/")
@@ -27,88 +34,62 @@ set(CMAKE_C_STANDARD_REQUIRED true)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_C_STANDARD 11)
 include(GenerateExportHeader)
-if(MSVC)
-    # /GS Adds buffer security checks, default on but incuded anyway to mirror gcc's fstack-protector flag
-    # /permissive- specify standards-conforming compiler behavior, also enabled by Qt6, default on with std:c++20
-    # Use /W4 as /Wall includes unnesserey warnings such as added padding to structs
-    set(CMAKE_CXX_FLAGS "/GS /permissive- /W4 ${CMAKE_CXX_FLAGS}")
 
-    # /EHs Enables stack unwind semantics for standard C++ exceptions to ensure stackframes are unwound
-    # and object deconstructors are called when an exception is caught.
-    # without it memory leaks and a warning is printed
-    # /EHc tells the compiler to assume that functions declared as extern "C" never throw a C++ exception
-    # This appears to not always be a defualt compiler option in CMAKE
-    set(CMAKE_CXX_FLAGS "/EHsc ${CMAKE_CXX_FLAGS}")
+add_compile_definitions($<$<NOT:$<CONFIG:Debug>>:QT_NO_DEBUG>)
+add_compile_definitions(QT_WARN_DEPRECATED_UP_TO=0x060400)
+add_compile_definitions(QT_DISABLE_DEPRECATED_UP_TO=0x060400)
 
-    # LINK accepts /SUBSYSTEM whics sets if we are a WINDOWS (gui) or a CONSOLE programs
-    # This implicitly selects an entrypoint specific to the subsystem selected
-    # qtmain/QtEntryPointLib provides the correct entrypoint (wWinMain) for gui programs
-    # Additinaly LINK autodetects we use a GUI so we can omit /SUBSYSTEM
-    # This allows tests to still use have console without using seperate linker flags
-    # /LTCG allows for linking wholy optimizated programs
-    # /MANIFEST:NO disables generating a manifest file, we instead provide our own
-    # /STACK sets the stack reserve size, ATL's pack list needs 3-4 MiB as of November 2022, provide 8 MiB
-    set(CMAKE_EXE_LINKER_FLAGS "/LTCG /MANIFEST:NO /STACK:8388608 ${CMAKE_EXE_LINKER_FLAGS}")
+if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    add_compile_options(
+        # /GS Adds buffer security checks, default on but included anyway to mirror gcc's fstack-protector flag
+        "$<$<COMPILE_LANGUAGE:C,CXX>:/GS>"
+
+        # /Gw helps reduce binary size
+        # /Gy allows the compiler to package individual functions
+        # /guard:cf enables control flow guard
+        "$<$<AND:$<CONFIG:Release,RelWithDebInfo>,$<COMPILE_LANGUAGE:C,CXX>>:/Gw;/Gy;/guard:cf>"
+    )
+
+    add_link_options(
+        # /LTCG allows for linking wholy optimizated programs
+        # /MANIFEST:NO disables generating a manifest file, we instead provide our own
+        # /STACK sets the stack reserve size, ATL's pack list needs 3-4 MiB as of November 2022, provide 8 MiB
+        "$<$<COMPILE_LANGUAGE:C,CXX>:/LTCG;/MANIFEST:NO;/STACK:8388608>"
+    )
 
     # /GL enables whole program optimizations
-    # /Gw helps reduce binary size
-    # /Gy allows the compiler to package individual functions
-    # /guard:cf enables control flow guard
-    foreach(lang C CXX)
-        set("CMAKE_${lang}_FLAGS_RELEASE" "/GL /Gw /Gy /guard:cf")
-    endforeach()
+    # NOTE: With Clang, this is implemented as regular LTO and only used during linking
+    if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        add_compile_options("$<$<AND:$<CONFIG:Release,RelWithDebInfo>,$<COMPILE_LANGUAGE:C,CXX>>:/GL>")
+    endif()
 
     # See https://github.com/ccache/ccache/issues/1040
-    # Note, CMake 3.25 replaces this with CMAKE_MSVC_DEBUG_INFORMATION_FORMAT
-    # See https://cmake.org/cmake/help/v3.25/variable/CMAKE_MSVC_DEBUG_INFORMATION_FORMAT.html
-    foreach(config DEBUG RELWITHDEBINFO)
-        foreach(lang C CXX)
-            set(flags_var "CMAKE_${lang}_FLAGS_${config}")
-            string(REGEX REPLACE "/Z[Ii]" "/Z7" ${flags_var} "${${flags_var}}")
-        endforeach()
-    endforeach()
+    # TODO(@getchoo): Is sccache affected by this? Would be nice to use `ProgramDatabase`....
+    set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
 
     if(CMAKE_MSVC_RUNTIME_LIBRARY STREQUAL "MultiThreadedDLL")
         set(CMAKE_MAP_IMPORTED_CONFIG_DEBUG Release "")
         set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release "")
     endif()
 else()
-    set(CMAKE_CXX_FLAGS "-Wall -pedantic -fstack-protector-strong --param=ssp-buffer-size=4 ${CMAKE_CXX_FLAGS}")
+    add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-fstack-protector-strong;--param=ssp-buffer-size=4>")
+
+    # Avoid re-defining _FORTIFY_SOURCE, as it can cause redefinition errors in setups that use it by default (i.e., package builds)
+    if(NOT (CMAKE_C_FLAGS MATCHES "-D_FORTIFY_SOURCE" OR CMAKE_CXX_FLAGS MATCHES "-D_FORTIFY_SOURCE"))
+        # NOTE: _FORTIFY_SOURCE requires optimizations in most newer versions of glibc
+        add_compile_options("$<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<CONFIG:Release,RelWithDebInfo>>:-D_FORTIFY_SOURCE=2>")
+    endif()
 
     # ATL's pack list needs more than the default 1 Mib stack on windows
-    if(WIN32)
-        set(CMAKE_EXE_LINKER_FLAGS "-Wl,--stack,8388608 ${CMAKE_EXE_LINKER_FLAGS}")
-
-        # Emit PDBs for WinDbg, etc.
-        if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-            set(CMAKE_EXE_LINKER_FLAGS "-Wl,--pdb= ${CMAKE_EXE_LINKER_FLAGS}")
-
-            foreach(lang C CXX)
-                set("CMAKE_${lang}_FLAGS" "-gcodeview ${CMAKE_${lang}_FLAGS}")
-
-                # Force-enabling this to use generator expressions like TARGET_PDB_FILE
-                # (and because we can actually emit PDBs)
-                set("CMAKE_${lang}_LINKER_SUPPORTS_PDB" ON)
-            endforeach()
-        endif()
+    if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+        add_link_options("$<$<COMPILE_LANGUAGE:C,CXX>:-Wl,--stack,8388608>")
 
         # -ffunction-sections and -fdata-sections help reduce binary size
         # -mguard=cf enables Control Flow Guard
         # TODO: Look into -gc-sections to further reduce binary size
-        foreach(lang C CXX)
-            set("CMAKE_${lang}_FLAGS_RELEASE" "-ffunction-sections -fdata-sections -mguard=cf")
-        endforeach()
+        add_compile_options("$<$<AND:$<CONFIG:Release,RelWithDebInfo>,$<COMPILE_LANGUAGE:C,CXX>>:-ffunction-sections;-fdata-sections;-mguard=cf>")
     endif()
 endif()
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DQT_WARN_DEPRECATED_UP_TO=0x060200")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DQT_DISABLE_DEPRECATED_UP_TO=0x060000")
-
-# Fix aarch64 build for toml++
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DTOML_ENABLE_FLOAT16=0")
-
-# set CXXFLAGS for build targets
-set(CMAKE_CXX_FLAGS_RELEASE "-O2 -D_FORTIFY_SOURCE=2 ${CMAKE_CXX_FLAGS_RELEASE}")
 
 # Export compile commands for debug builds if we can (useful in LSPs like clangd)
 # https://cmake.org/cmake/help/v3.31/variable/CMAKE_EXPORT_COMPILE_COMMANDS.html
@@ -116,33 +97,40 @@ if(CMAKE_GENERATOR STREQUAL "Unix Makefiles" OR CMAKE_GENERATOR MATCHES "^Ninja"
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 endif()
 
+option(USE_CLANG_TIDY "Enable the use of clang-tidy during compilation" OFF)
+
+if(USE_CLANG_TIDY)
+    find_program(CLANG_TIDY clang-tidy OPTIONAL)
+    if(CLANG_TIDY)
+        message(STATUS "Using clang-tidy during compilation")
+        set(CLANG_TIDY_COMMAND "${CLANG_TIDY}" "--config-file=${CMAKE_SOURCE_DIR}/.clang-tidy")
+        set(CMAKE_CXX_CLANG_TIDY ${CLANG_TIDY_COMMAND})
+    else()
+        message(WARNING "Unable to find `clang-tidy`. Not using during compilation")
+    endif()
+endif()
+
 option(DEBUG_ADDRESS_SANITIZER "Enable Address Sanitizer in Debug builds" OFF)
 
 # If this is a Debug build turn on address sanitiser
-if ((CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo") AND DEBUG_ADDRESS_SANITIZER)
+if (DEBUG_ADDRESS_SANITIZER)
     message(STATUS "Address Sanitizer enabled for Debug builds, Turn it off with -DDEBUG_ADDRESS_SANITIZER=off")
-    if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
-        if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
-            # using clang with clang-cl front end
-            message(STATUS "Address Sanitizer available on Clang MSVC frontend")
-            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fsanitize=address /Oy-")
-            set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /fsanitize=address /Oy-")
-        else()
-            # AppleClang and Clang
-            message(STATUS "Address Sanitizer available on Clang")
-            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer -fsanitize=undefined -fno-sanitize-recover=null")
-            set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -fno-omit-frame-pointer -fsanitize=undefined -fno-sanitize-recover=null")
-        endif()
-    elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-        # GCC
-        message(STATUS "Address Sanitizer available on GCC")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer -fsanitize=undefined -fno-sanitize-recover")
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -fno-omit-frame-pointer -fsanitize=undefined -fno-sanitize-recover")
-        link_libraries("asan")
-    elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
-        message(STATUS "Address Sanitizer available on MSVC")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fsanitize=address /Oy-")
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /fsanitize=address /Oy-")
+
+    set(USE_ASAN_COMPILE_OPTIONS $<AND:$<CONFIG:Debug,RelWithDebInfo>,$<COMPILE_LANGUAGE:C,CXX>>)
+    if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        message(STATUS "Using Address Sanitizer compile options for MSVC frontend")
+        add_compile_options(
+                $<${USE_ASAN_COMPILE_OPTIONS}:/fsanitize=address>
+                $<${USE_ASAN_COMPILE_OPTIONS}:/Oy->
+        )
+    elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+        message(STATUS "Using Address Sanitizer compile options for GCC/Clang")
+        add_compile_options(
+                $<${USE_ASAN_COMPILE_OPTIONS}:-fsanitize=address,undefined>
+                $<${USE_ASAN_COMPILE_OPTIONS}:-fno-omit-frame-pointer>
+                $<${USE_ASAN_COMPILE_OPTIONS}:-fno-sanitize-recover=null>
+        )
+        link_libraries("asan" "ubsan")
     else()
         message(STATUS "Address Sanitizer not available on compiler ${CMAKE_CXX_COMPILER_ID}")
     endif()
@@ -158,8 +146,9 @@ if(ENABLE_LTO)
     if(ipo_supported)
         set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
         set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
         if(CMAKE_BUILD_TYPE)
-            if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
+            if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
                 message(STATUS "IPO / LTO enabled")
             else()
                 message(STATUS "Not enabling IPO / LTO on debug builds")
@@ -174,20 +163,9 @@ endif()
 
 option(BUILD_TESTING "Build the testing tree." ON)
 
-find_package(ECM QUIET NO_MODULE)
-if(NOT ECM_FOUND)
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libraries/extra-cmake-modules/CMakeLists.txt")
-        message(STATUS "Using bundled ECM")
-        set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/libraries/extra-cmake-modules/modules;${CMAKE_MODULE_PATH}")
-    else()
-        message(FATAL_ERROR
-            " Could not find ECM\n \n"
-            " Either install ECM using the system package manager or clone submodules\n"
-            " Submodules can be cloned with 'git submodule update --init --recursive'")
-    endif()
-else()
-    set(CMAKE_MODULE_PATH "${ECM_MODULE_PATH};${CMAKE_MODULE_PATH}")
-endif()
+find_package(ECM NO_MODULE REQUIRED)
+set(CMAKE_MODULE_PATH "${ECM_MODULE_PATH};${CMAKE_MODULE_PATH}")
+
 include(CTest)
 include(ECMAddTests)
 if(BUILD_TESTING)
@@ -199,12 +177,13 @@ endif()
 ######## Set URLs ########
 set(Launcher_NEWS_RSS_URL "https://prismlauncher.org/feed/feed.xml" CACHE STRING "URL to fetch Prism Launcher's news RSS feed from.")
 set(Launcher_NEWS_OPEN_URL "https://prismlauncher.org/news" CACHE STRING "URL that gets opened when the user clicks 'More News'")
-set(Launcher_HELP_URL "https://prismlauncher.org/wiki/help-pages/%1" CACHE STRING "URL (with arg %1 to be substituted with page-id) that gets opened when the user requests help")
+set(Launcher_WIKI_URL "https://prismlauncher.org/wiki/" CACHE STRING "URL that gets opened when the user clicks 'Launcher Help'")
+set(Launcher_HELP_URL "https://prismlauncher.org/wiki/help-pages/%1" CACHE STRING "URL (with arg %1 to be substituted with page-id) that gets opened when the user requests help in a dialog window")
 set(Launcher_LOGIN_CALLBACK_URL "https://prismlauncher.org/successful-login" CACHE STRING "URL that gets opened when the user successfully logins.")
-set(Launcher_FMLLIBS_BASE_URL "https://files.prismlauncher.org/fmllibs/" CACHE STRING "URL for FML Libraries.")
+set(Launcher_LEGACY_FMLLIBS_BASE_URL "https://files.prismlauncher.org/fmllibs/" CACHE STRING "URL for legacy (<=1.5.2) FML Libraries.")
 
 ######## Set version numbers ########
-set(Launcher_VERSION_MAJOR 10)
+set(Launcher_VERSION_MAJOR 12)
 set(Launcher_VERSION_MINOR 0)
 set(Launcher_VERSION_PATCH 0)
 
@@ -244,8 +223,9 @@ set(Launcher_DISCORD_URL "https://prismlauncher.org/discord" CACHE STRING "URL f
 set(Launcher_SUBREDDIT_URL "https://prismlauncher.org/reddit" CACHE STRING "URL for the subreddit.")
 
 # Builds
-set(Launcher_FORCE_BUNDLED_LIBS OFF CACHE BOOL "Prevent using system libraries, if they are available as submodules")
 set(Launcher_QT_VERSION_MAJOR "6" CACHE STRING "Major Qt version to build against")
+
+option(Launcher_USE_PCH "Use precompiled headers where possible" ON)
 
 # Java downloader
 set(Launcher_ENABLE_JAVA_DOWNLOADER_DEFAULT ON)
@@ -309,32 +289,12 @@ set(Launcher_BUILD_TIMESTAMP "${TODAY}")
 
 ################################ 3rd Party Libs ################################
 
-# Successive configurations of cmake without cleaning the build dir will cause zlib fallback to fail due to cached values
-# Record when fallback triggered and skip this find_package
-if(NOT Launcher_FORCE_BUNDLED_LIBS AND NOT FORCE_BUNDLED_ZLIB)
-    find_package(ZLIB QUIET)
-endif()
-if(NOT ZLIB_FOUND)
-    set(FORCE_BUNDLED_ZLIB TRUE CACHE BOOL "")
-    mark_as_advanced(FORCE_BUNDLED_ZLIB)
-endif()
-
 # Find the required Qt parts
-include(QtVersionlessBackport)
 if(Launcher_QT_VERSION_MAJOR EQUAL 6)
     set(QT_VERSION_MAJOR 6)
-    find_package(Qt6 REQUIRED COMPONENTS Core CoreTools Widgets Concurrent Network Test Xml Core5Compat NetworkAuth OpenGL)
+    find_package(Qt6 6.4 REQUIRED COMPONENTS Core CoreTools Widgets Concurrent Network Test Xml NetworkAuth OpenGL)
     find_package(Qt6 COMPONENTS DBus)
     list(APPEND Launcher_QT_DBUS Qt6::DBus)
-    list(APPEND Launcher_QT_LIBS Qt6::Core5Compat)
-
-    if(NOT Launcher_FORCE_BUNDLED_LIBS)
-        find_package(QuaZip-Qt6 1.3 QUIET)
-    endif()
-    if (NOT QuaZip-Qt6_FOUND)
-        set(QUAZIP_QT_MAJOR_VERSION ${QT_VERSION_MAJOR} CACHE STRING "Qt version to use (4, 5 or 6), defaults to ${QT_VERSION_MAJOR}" FORCE)
-        set(FORCE_BUNDLED_QUAZIP 1)
-    endif()
 else()
     message(FATAL_ERROR "Qt version ${Launcher_QT_VERSION_MAJOR} is not supported")
 endif()
@@ -343,6 +303,13 @@ if(Launcher_QT_VERSION_MAJOR EQUAL 6)
     set(QT_PLUGINS_DIR  ${QT${QT_VERSION_MAJOR}_INSTALL_PREFIX}/${QT${QT_VERSION_MAJOR}_INSTALL_PLUGINS})
     set(QT_LIBS_DIR     ${QT${QT_VERSION_MAJOR}_INSTALL_PREFIX}/${QT${QT_VERSION_MAJOR}_INSTALL_LIBS})
     set(QT_LIBEXECS_DIR ${QT${QT_VERSION_MAJOR}_INSTALL_PREFIX}/${QT${QT_VERSION_MAJOR}_INSTALL_LIBEXECS})
+endif()
+
+find_package(cmark REQUIRED)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(gamemode REQUIRED IMPORTED_TARGET gamemode)
 endif()
 
 # Find libqrencode
@@ -357,21 +324,23 @@ else()
     pkg_check_modules(libqrencode REQUIRED IMPORTED_TARGET libqrencode)
 endif()
 
-if(NOT Launcher_FORCE_BUNDLED_LIBS)
-    # Find toml++
-    find_package(tomlplusplus 3.2.0 QUIET)
-    # Fallback to pkg-config (if available) if CMake files aren't found
-    if(NOT tomlplusplus_FOUND)
-        find_package(PkgConfig QUIET)
-        if(PkgConfig_FOUND)
-            pkg_check_modules(tomlplusplus IMPORTED_TARGET tomlplusplus>=3.2.0)
-        endif()
-    endif()
-
-
-    # Find cmark
-    find_package(cmark QUIET)
+# Find libarchive through CMake packages, mainly for vcpkg
+find_package(LibArchive)
+# CMake packages aren't available in most distributions of libarchive, so fallback to pkg-config
+if(NOT LibArchive_FOUND)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(libarchive REQUIRED IMPORTED_TARGET libarchive)
 endif()
+
+find_package(tomlplusplus 3.2.0)
+# fallback to pkgconfig, important especially as many distros package toml++ built with meson
+if(NOT tomlplusplus_FOUND)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(tomlplusplus REQUIRED IMPORTED_TARGET tomlplusplus>=3.2.0)
+endif()
+
+find_package(ZLIB REQUIRED)
+
 
 include(ECMQtDeclareLoggingCategory)
 
@@ -405,7 +374,7 @@ if(UNIX AND APPLE)
     # Mac bundle settings
     set(MACOSX_BUNDLE_BUNDLE_NAME "${Launcher_DisplayName}")
     set(MACOSX_BUNDLE_INFO_STRING "${Launcher_DisplayName}: A custom launcher for Minecraft that allows you to easily manage multiple installations of Minecraft at once.")
-    set(MACOSX_BUNDLE_GUI_IDENTIFIER "org.prismlauncher.${Launcher_Name}")
+    set(MACOSX_BUNDLE_GUI_IDENTIFIER "${Launcher_AppID}")
     set(MACOSX_BUNDLE_BUNDLE_VERSION "${Launcher_VERSION_NAME}")
     set(MACOSX_BUNDLE_SHORT_VERSION_STRING "${Launcher_VERSION_NAME}")
     set(MACOSX_BUNDLE_LONG_VERSION_STRING "${Launcher_VERSION_NAME}")
@@ -425,6 +394,52 @@ if(UNIX AND APPLE)
     # Add the icon
     install(FILES ${Launcher_Branding_ICNS} DESTINATION ${RESOURCES_DEST_DIR} RENAME ${Launcher_Name}.icns)
 
+    find_program(ACTOOL_EXE actool DOC "Path to the apple asset catalog compiler")
+    if(ACTOOL_EXE)
+        execute_process(
+            COMMAND xcodebuild -version
+            OUTPUT_VARIABLE XCODE_VERSION_OUTPUT
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+
+        string(REGEX MATCH "Xcode ([0-9]+\.[0-9]+)" XCODE_VERSION_MATCH "${XCODE_VERSION_OUTPUT}")
+        if(XCODE_VERSION_MATCH)
+            set(XCODE_VERSION ${CMAKE_MATCH_1})
+        else()
+            set(XCODE_VERSION 0.0)
+        endif()
+
+        if(XCODE_VERSION VERSION_GREATER_EQUAL 26.0)
+            set(ASSETS_OUT_DIR "${CMAKE_BINARY_DIR}/program_info")
+            set(GENERATED_ASSETS_CAR "${ASSETS_OUT_DIR}/Assets.car")
+            set(ICON_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/${Launcher_Branding_MAC_ICON}")
+
+            add_custom_command(
+                OUTPUT "${GENERATED_ASSETS_CAR}"
+                COMMAND ${ACTOOL_EXE} "${ICON_SOURCE}"
+                        --compile "${ASSETS_OUT_DIR}"
+                        --output-partial-info-plist /dev/null
+                        --app-icon ${Launcher_Name}
+                        --enable-on-demand-resources NO
+                        --target-device mac
+                        --minimum-deployment-target ${CMAKE_OSX_DEPLOYMENT_TARGET}
+                        --platform macosx
+                DEPENDS "${ICON_SOURCE}"
+                COMMENT "Compiling asset catalog (${ICON_SOURCE})"
+                VERBATIM
+            )
+            add_custom_target(compile_assets ALL DEPENDS "${GENERATED_ASSETS_CAR}")
+            install(FILES "${GENERATED_ASSETS_CAR}" DESTINATION "${RESOURCES_DEST_DIR}")
+        else()
+            message(WARNING "Xcode ${XCODE_VERSION} is too old. Minimum required version is 26.0. Not compiling liquid glass icons.")
+        endif()
+
+    else()
+        message(WARNING "actool not found. Cannot compile macOS app icons.\n"
+                "Install Xcode command line tools: 'xcode-select --install'")
+    endif()
+
+
 elseif(UNIX)
     include(KDEInstallDirs)
 
@@ -438,7 +453,8 @@ elseif(UNIX)
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${Launcher_Desktop} DESTINATION ${KDE_INSTALL_APPDIR})
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${Launcher_MetaInfo} DESTINATION ${KDE_INSTALL_METAINFODIR})
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/${Launcher_SVG} DESTINATION "${KDE_INSTALL_ICONDIR}/hicolor/scalable/apps")
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/${Launcher_mrpack_MIMEInfo} DESTINATION ${KDE_INSTALL_MIMEDIR})
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/${Launcher_PNG_256} DESTINATION "${KDE_INSTALL_ICONDIR}/hicolor/256x256/apps" RENAME "${Launcher_AppID}.png")
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${Launcher_MIMEInfo} DESTINATION ${KDE_INSTALL_MIMEDIR})
 
     install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/launcher/qtlogging.ini" DESTINATION "share/${Launcher_Name}")
 
@@ -476,63 +492,11 @@ option(NBT_USE_ZLIB "Build NBT library with zlib support" OFF)
 option(NBT_BUILD_TESTS "Build NBT library tests" OFF) #FIXME: fix unit tests.
 add_subdirectory(libraries/libnbtplusplus)
 
-add_subdirectory(libraries/systeminfo) # system information library
 add_subdirectory(libraries/launcher) # java based launcher part for Minecraft
 add_subdirectory(libraries/javacheck) # java compatibility checker
-if(FORCE_BUNDLED_ZLIB)
-    message(STATUS "Using bundled zlib")
 
-    set(CMAKE_POLICY_DEFAULT_CMP0069 NEW) # Suppress cmake warnings and allow INTERPROCEDURAL_OPTIMIZATION for zlib
-    set(SKIP_INSTALL_ALL ON)
-    add_subdirectory(libraries/zlib EXCLUDE_FROM_ALL)
-
-    # On OS where unistd.h exists, zlib's generated header defines `Z_HAVE_UNISTD_H`, while the included header does not.
-    # We cannot safely undo the rename on those systems, and they generally have packages for zlib anyway.
-    check_include_file(unistd.h NEED_GENERATED_ZCONF)
-    if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libraries/zlib/zconf.h.included" AND NOT NEED_GENERATED_ZCONF)
-        # zlib's cmake script renames a file, dirtying the submodule, see https://github.com/madler/zlib/issues/162
-        message(STATUS "Undoing Rename")
-        message(STATUS "    ${CMAKE_CURRENT_SOURCE_DIR}/libraries/zlib/zconf.h")
-        file(RENAME "${CMAKE_CURRENT_SOURCE_DIR}/libraries/zlib/zconf.h.included" "${CMAKE_CURRENT_SOURCE_DIR}/libraries/zlib/zconf.h")
-    endif()
-
-    set(ZLIB_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/libraries/zlib" "${CMAKE_CURRENT_SOURCE_DIR}/libraries/zlib" CACHE STRING "" FORCE)
-    set_target_properties(zlibstatic PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${ZLIB_INCLUDE_DIR}")
-    add_library(ZLIB::ZLIB ALIAS zlibstatic)
-    set(ZLIB_LIBRARY ZLIB::ZLIB CACHE STRING "zlib library name")
-
-    find_package(ZLIB REQUIRED)
-else()
-    message(STATUS "Using system zlib")
-endif()
-if (FORCE_BUNDLED_QUAZIP)
-    message(STATUS "Using bundled QuaZip")
-    set(BUILD_SHARED_LIBS 0)  # link statically to avoid conflicts.
-    set(QUAZIP_INSTALL 0)
-    add_subdirectory(libraries/quazip) # zip manipulation library
-else()
-    message(STATUS "Using system QuaZip")
-endif()
 add_subdirectory(libraries/rainbow) # Qt extension for colors
 add_subdirectory(libraries/LocalPeer) # fork of a library from Qt solutions
-if(NOT tomlplusplus_FOUND)
-    message(STATUS "Using bundled tomlplusplus")
-    add_subdirectory(libraries/tomlplusplus) # toml parser
-else()
-    message(STATUS "Using system tomlplusplus")
-endif()
-if(NOT cmark_FOUND)
-    message(STATUS "Using bundled cmark")
-    set(ORIGINAL_BUILD_TESTING ${BUILD_TESTING})
-    set(BUILD_TESTING 0)
-    set(BUILD_SHARED_LIBS 0)
-    add_subdirectory(libraries/cmark EXCLUDE_FROM_ALL) # Markdown parser
-    add_library(cmark::cmark ALIAS cmark)
-    set(BUILD_TESTING ${ORIGINAL_BUILD_TESTING})
-else()
-    message(STATUS "Using system cmark")
-endif()
-add_subdirectory(libraries/gamemode)
 add_subdirectory(libraries/murmur2) # Hash for usage with the CurseForge API
 add_subdirectory(libraries/qdcss) # css parser
 

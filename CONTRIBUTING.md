@@ -1,5 +1,52 @@
 # Contributions Guidelines
 
+## Restrictions on Generative AI Usage (AI Policy)
+
+> [!NOTE]
+> The following is adapted from [matplotlib's contributing guide](https://matplotlib.org/devdocs/devel/contribute.html#generative-ai) and the [Linux Kernel policy guide](https://www.kernel.org/doc./html/next/process/coding-assistants.html)
+
+We expect authentic engagement in our community.
+
+- Do not post output from Large Language Models or similar generative AI as comments on GitHub or our discord server, as such comments tend to be formulaic and low-quality content.
+- If you use generative AI tools as an aid in developing code or documentation changes, ensure that you fully understand the proposed changes and can explain why they are the correct approach.
+
+Make sure you have added value based on your personal competency to your contributions.
+Just taking some input, feeding it to an AI and posting the result is not of value to the project.
+To preserve precious core developer capacity, we reserve the right to rigorously reject seemingly AI generated low-value contributions.
+
+### Signed-off-by and Developer Certificate of Origin
+
+AI agents MUST NOT add Signed-off-by tags. Only humans can legally certify the Developer Certificate of Origin (DCO). The human submitter is responsible for:
+
+- Reviewing all AI-generated code
+- Ensuring compliance with licensing requirements
+- Adding their own Signed-off-by tag to certify the DCO
+- Taking full responsibility for the contribution
+
+See [Signing your work](#signing-your-work) for more information.
+
+### Attribution
+
+When AI tools contribute to development, proper attribution helps track the evolving role of AI in the development process. Contributions should include an Assisted-by tag in the commit message with the following format:
+
+```text
+Assisted-by: AGENT_NAME:MODEL_VERSION [TOOL1] [TOOL2]
+```
+
+Where:
+
+- `AGENT_NAME` is the name of the AI tool or framework
+- `MODEL_VERSION` is the specific model version used
+- `[TOOL1] [TOOL2]` are optional specialized analysis tools used (e.g., coccinelle, sparse, smatch, clang-tidy)
+
+Basic development tools (git, gcc, make, editors) should not be listed.
+
+Example:
+
+```text
+Assisted-by: Claude:claude-3-opus coccinelle sparse
+```
+
 ## Code style
 
 All files are formatted with `clang-format` using the configuration in `.clang-format`. Ensure it is run on changed files before committing!
@@ -13,7 +60,8 @@ Please also follow the project's conventions for C++:
 - Public, private or protected `static const` class data members should be formatted as `SCREAMING_SNAKE_CASE`: `MAX_VALUE`.
 - Class function members should be formatted as `camelCase` without a prefix: `incrementCounter`.
 - Global functions and non-`const` global variables should be formatted as `camelCase` without a prefix: `globalData`.
-- `const` global variables, macros, and enum constants should be formatted as `SCREAMING_SNAKE_CASE`: `LIGHT_GRAY`.
+- `const` global variables and macros should be formatted as `SCREAMING_SNAKE_CASE`: `LIGHT_GRAY`.
+- enum constants should be formatted as `PascalCase`: `CamelusBactrianus`
 - Avoid inventing acronyms or abbreviations especially for a name of multiple words - like `tp` for `texturePack`.
 - Avoid using `[[nodiscard]]` unless ignoring the return value is likely to cause a bug in cases such as:
   - A function allocates memory or another resource and the caller needs to clean it up.
@@ -30,7 +78,7 @@ Here is what these conventions with the formatting configuration look like:
 
 constexpr double PI = 3.14159;
 
-enum class PizzaToppings { HAM_AND_PINEAPPLE, OREO_AND_KETCHUP };
+enum class PizzaToppings { HamAndPineapple, OreoAndKetchup };
 
 struct Person {
     QString name;

@@ -152,6 +152,7 @@ int ProgressDialog::execWithTask(Task* task)
     this->m_taskConnections.push_back(connect(task, &Task::progress, this, &ProgressDialog::changeProgress));
     this->m_taskConnections.push_back(connect(task, &Task::aborted, this, &ProgressDialog::hide));
     this->m_taskConnections.push_back(connect(task, &Task::abortStatusChanged, ui->skipButton, &QPushButton::setEnabled));
+    this->m_taskConnections.push_back(connect(task, &Task::abortButtonTextChanged, ui->skipButton, &QPushButton::setText));
 
     m_is_multi_step = task->isMultiStep();
     ui->taskProgressScrollArea->setHidden(!m_is_multi_step);
@@ -251,10 +252,7 @@ void ProgressDialog::changeStepProgress(TaskStepProgress const& task_progress)
     task_bar->setValue(mapped_current);
     task_bar->setStatus(task_progress.status);
     task_bar->setDetails(task_progress.details);
-
-    if (task_progress.isDone()) {
-        task_bar->setVisible(false);
-    }
+    task_bar->setVisible(!task_progress.isDone());
 }
 
 void ProgressDialog::changeProgress(qint64 current, qint64 total)

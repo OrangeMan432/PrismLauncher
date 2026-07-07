@@ -21,11 +21,11 @@ class QSortFilterProxyModel;
 
 /* A macro to define useful functions to handle Resource* -> T* more easily on derived classes */
 #define RESOURCE_HELPERS(T)                                         \
-    T& at(int index)                                  \
+    T& at(int index)                                                \
     {                                                               \
         return *static_cast<T*>(m_resources[index].get());          \
     }                                                               \
-    const T& at(int index) const                      \
+    const T& at(int index) const                                    \
     {                                                               \
         return *static_cast<const T*>(m_resources.at(index).get()); \
     }                                                               \
@@ -61,7 +61,7 @@ class QSortFilterProxyModel;
 class ResourceFolderModel : public QAbstractListModel {
     Q_OBJECT
    public:
-    ResourceFolderModel(const QDir& dir, BaseInstance* instance, bool is_indexed, bool create_dir, QObject* parent = nullptr);
+    ResourceFolderModel(const QDir& dir, BaseInstance* instance, bool isIndexed, bool createDir, QObject* parent = nullptr);
     ~ResourceFolderModel() override;
 
     virtual QString id() const { return "resource"; }
@@ -84,7 +84,7 @@ class ResourceFolderModel : public QAbstractListModel {
     virtual bool startWatching() { return startWatching({ indexDir().absolutePath(), m_dir.absolutePath() }); }
     virtual bool stopWatching() { return stopWatching({ indexDir().absolutePath(), m_dir.absolutePath() }); }
 
-    QDir indexDir() { return { QString("%1/.index").arg(dir().absolutePath()) }; }
+    virtual QDir indexDir() const { return { QString("%1/.index").arg(dir().absolutePath()) }; }
 
     /** Given a path in the system, install that resource, moving it to its place in the
      *  instance file hierarchy.
@@ -93,13 +93,13 @@ class ResourceFolderModel : public QAbstractListModel {
      */
     virtual bool installResource(QString path);
 
-    virtual void installResourceWithFlameMetadata(QString path, ModPlatform::IndexedVersion& vers);
+    virtual void installResourceWithFlameMetadata(const QString& path, ModPlatform::IndexedVersion& vers);
 
     /** Uninstall (i.e. remove all data about it) a resource, given its file name.
      *
      *  Returns whether the removal was successful.
      */
-    virtual bool uninstallResource(QString file_name, bool preserve_metadata = false);
+    virtual bool uninstallResource(const QString& fileName, bool preserveMetadata = false);
     virtual bool deleteResources(const QModelIndexList&);
     virtual void deleteMetadata(const QModelIndexList&);
 
@@ -125,7 +125,7 @@ class ResourceFolderModel : public QAbstractListModel {
 
     Resource::Ptr find(QString id);
 
-    QDir const& dir() const { return m_dir; }
+    const QDir& dir() const { return m_dir; }
 
     /** Checks whether there's any parse tasks being done.
      *
@@ -137,12 +137,12 @@ class ResourceFolderModel : public QAbstractListModel {
     /* Qt behavior */
 
     /* Basic columns */
-    enum Columns { ActiveColumn = 0, NameColumn, DateColumn, ProviderColumn, SizeColumn, NUM_COLUMNS };
+    enum Columns : std::uint8_t { ActiveColumn = 0, NameColumn, DateColumn, ProviderColumn, SizeColumn, FileNameColumn, NumColumns };
 
-    QStringList columnNames(bool translated = true) const { return translated ? m_column_names_translated : m_column_names; }
+    QStringList columnNames(bool translated = true) const { return translated ? m_columnNamesTranslated : m_columnNames; }
 
     int rowCount(const QModelIndex& parent = {}) const override { return parent.isValid() ? 0 : static_cast<int>(size()); }
-    int columnCount(const QModelIndex& parent = {}) const override { return parent.isValid() ? 0 : NUM_COLUMNS; }
+    int columnCount(const QModelIndex& parent = {}) const override { return parent.isValid() ? 0 : NumColumns; }
 
     Qt::DropActions supportedDropActions() const override;
 
@@ -153,6 +153,7 @@ class ResourceFolderModel : public QAbstractListModel {
 
     [[nodiscard]] bool validateIndex(const QModelIndex& index) const;
 
+    QBrush rowBackground(int row) const;
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
     bool setData(const QModelIndex& index, const QVariant& value, int role = Qt::EditRole) override;
 
@@ -170,24 +171,26 @@ class ResourceFolderModel : public QAbstractListModel {
     QSortFilterProxyModel* createFilterProxyModel(QObject* parent = nullptr);
 
     SortType columnToSortKey(size_t column) const;
-    QList<QHeaderView::ResizeMode> columnResizeModes() const { return m_column_resize_modes; }
+    QList<QHeaderView::ResizeMode> columnResizeModes() const { return m_columnResizeModes; }
 
     class ProxyModel : public QSortFilterProxyModel {
        public:
         explicit ProxyModel(QObject* parent = nullptr) : QSortFilterProxyModel(parent) {}
 
        protected:
-        bool filterAcceptsRow(int source_row, const QModelIndex& source_parent) const override;
-        bool lessThan(const QModelIndex& source_left, const QModelIndex& source_right) const override;
+        bool filterAcceptsRow(int sourceRow, const QModelIndex& sourceParent) const override;
+        bool lessThan(const QModelIndex& sourceLeft, const QModelIndex& sourceRight) const override;
     };
 
     QString instDirPath() const;
+    BaseInstance* instance() const { return m_instance; }
 
    signals:
     void updateFinished();
     void parseFinished();
 
    protected:
+    [[nodiscard]] virtual Task* createPreUpdateTask() { return nullptr; }
     /** This creates a new update task to be executed by update().
      *
      *  The task should load and parse all resources necessary, and provide a way of accessing such results.
@@ -204,7 +207,7 @@ class ResourceFolderModel : public QAbstractListModel {
      *  This task should load and parse all heavy info needed by a resource, such as parsing a manifest. It gets executed
      *  in the background, so it slowly updates the UI as tasks get done.
      */
-    [[nodiscard]] virtual Task* createParseTask(Resource&) { return nullptr; }
+    [[nodiscard]] virtual Task* createParseTask(Resource& /*unused*/) { return nullptr; }
 
     /** Standard implementation of the model update logic.
      *
@@ -212,10 +215,10 @@ class ResourceFolderModel : public QAbstractListModel {
      *  to act only on those disparities.
      *
      */
-    void applyUpdates(QSet<QString>& current_set, QSet<QString>& new_set, QMap<QString, Resource::Ptr>& new_resources);
+    void applyUpdates(QSet<QString>& currentSet, QSet<QString>& newSet, QMap<QString, Resource::Ptr>& newResources);
 
    protected slots:
-    void directoryChanged(QString);
+    void directoryChanged(const QString&);
 
     /** Called when the update task is successful.
      *
@@ -231,36 +234,40 @@ class ResourceFolderModel : public QAbstractListModel {
      *  This is just a simple reference implementation. You probably want to override it with your own logic in a subclass
      *  if the resource is complex and has more stuff to parse.
      */
-    virtual void onParseSucceeded(int ticket, QString resource_id);
-    virtual void onParseFailed(int ticket, QString resource_id);
+    virtual void onParseSucceeded(int ticket, const QString& resourceId);
+    virtual void onParseFailed(int ticket, const QString& resourceId);
 
    protected:
     // Represents the relationship between a column's index (represented by the list index), and it's sorting key.
     // As such, the order in with they appear is very important!
-    QList<SortType> m_column_sort_keys = { SortType::ENABLED, SortType::NAME, SortType::DATE, SortType::PROVIDER, SortType::SIZE };
-    QStringList m_column_names = { "Enable", "Name", "Last Modified", "Provider", "Size" };
-    QStringList m_column_names_translated = { tr("Enable"), tr("Name"), tr("Last Modified"), tr("Provider"), tr("Size") };
-    QList<QHeaderView::ResizeMode> m_column_resize_modes = { QHeaderView::Interactive, QHeaderView::Stretch, QHeaderView::Interactive,
-                                                             QHeaderView::Interactive, QHeaderView::Interactive };
-    QList<bool> m_columnsHideable = { false, false, true, true, true };
+    QList<SortType> m_columnSortKeys = { SortType::Enabled,  SortType::Name, SortType::Date,
+                                         SortType::Provider, SortType::Size, SortType::Filename };
+    QStringList m_columnNames = { "Enable", "Name", "Last Modified", "Provider", "Size", "File Name" };
+    QStringList m_columnNamesTranslated = { tr("Enable"), tr("Name"), tr("Last Modified"), tr("Provider"), tr("Size"), tr("File Name") };
+    QList<QHeaderView::ResizeMode> m_columnResizeModes = { QHeaderView::Interactive, QHeaderView::Stretch,     QHeaderView::Interactive,
+                                                           QHeaderView::Interactive, QHeaderView::Interactive, QHeaderView::Interactive };
+    QList<bool> m_columnsHideable = { false, false, true, true, true, true };
 
     QDir m_dir;
     BaseInstance* m_instance;
     QFileSystemWatcher m_watcher;
-    bool m_is_watching = false;
+    bool m_isWatching = false;
 
-    bool m_is_indexed;
-    bool m_first_folder_load = true;
+    bool m_isIndexed;
+    bool m_firstFolderLoad = true;
 
-    Task::Ptr m_current_update_task = nullptr;
-    bool m_scheduled_update = false;
+    Task::Ptr m_currentUpdateTask = nullptr;
+    bool m_scheduledUpdate = false;
 
     QList<Resource::Ptr> m_resources;
 
     // Represents the relationship between a resource's internal ID and it's row position on the model.
-    QMap<QString, int> m_resources_index;
+    QMap<QString, int> m_resourcesIndex;
 
-    ConcurrentTask m_helper_thread_task;
-    QMap<int, Task::Ptr> m_active_parse_tasks;
-    std::atomic<int> m_next_resolution_ticket = 0;
+    // Runs off-thread
+    ConcurrentTask m_resourceResolver;
+    bool m_resourceResolverRunning = false;
+
+    QMap<int, Task::Ptr> m_activeParseTasks;
+    std::atomic<int> m_nextResolutionTicket = 0;
 };

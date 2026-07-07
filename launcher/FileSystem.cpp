@@ -36,6 +36,7 @@
  */
 
 #include "FileSystem.h"
+#include <qcontainerfwd.h>
 #include <QPair>
 
 #include "BuildConfig.h"
@@ -59,10 +60,8 @@
 #if defined Q_OS_WIN32
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
-#include <objbase.h>
 #include <objidl.h>
 #include <shlguid.h>
-#include <shlobj.h>
 #include <shobjidl.h>
 #include <sys/utime.h>
 #include <versionhelpers.h>
@@ -284,6 +283,9 @@ bool copyFileAttributes(QString src, QString dst)
     if (attrs == INVALID_FILE_ATTRIBUTES)
         return false;
     return SetFileAttributesW(dst.toStdWString().c_str(), attrs);
+#else
+    Q_UNUSED(src);
+    Q_UNUSED(dst);
 #endif
     return true;
 }
@@ -434,7 +436,7 @@ void create_link::make_link_list(const QString& offset)
             link_file(src, "");
         } else {
             if (m_debug)
-                qDebug() << "linking recursively:" << src << "to" << dst << ", max_depth:" << m_max_depth;
+                qDebug().nospace() << "linking recursively: " << src << " to " << dst << ", max_depth: " << m_max_depth;
             QDir src_dir(src);
             QDirIterator source_it(src, QDir::Filter::Files | QDir::Filter::Hidden, QDirIterator::Subdirectories);
 
@@ -594,7 +596,7 @@ void create_link::runPrivileged(const QString& offset)
     }
 
     ExternalLinkFileProcess* linkFileProcess = new ExternalLinkFileProcess(serverName, m_useHardLinks, this);
-    connect(linkFileProcess, &ExternalLinkFileProcess::processExited, this, [this, gotResults]() { emit finishedPrivileged(gotResults); });
+    connect(linkFileProcess, &ExternalLinkFileProcess::processExited, this, [this, &gotResults]() { emit finishedPrivileged(gotResults); });
     connect(linkFileProcess, &ExternalLinkFileProcess::finished, linkFileProcess, &QObject::deleteLater);
 
     linkFileProcess->start();
@@ -680,6 +682,32 @@ bool deletePath(QString path)
     }
 
     return err.value() == 0;
+}
+
+bool deleteContents(const QString& path)
+{
+    const QFileInfo info(path);
+    if (!info.exists()) {
+        return true;
+    }
+    if (!info.isDir()) {
+        qWarning() << "Attempted to delete contents of non-directory path:" << path;
+        return false;
+    }
+
+    bool ret = true;
+
+    for (const auto& entry : fs::directory_iterator(StringUtils::toStdString(path))) {
+        std::error_code err;
+
+        fs::remove_all(entry.path(), err);
+        if (err.value() != 0) {
+            qWarning().nospace() << "Could not delete directory entry " << entry.path() << ": " << QString::fromStdString(err.message());
+            ret = false;
+        }
+    }
+
+    return ret;
 }
 
 bool trash(QString path, QString* pathInTrash)
@@ -795,68 +823,33 @@ QString NormalizePath(QString path)
     }
 }
 
-static const QString BAD_WIN_CHARS = "<>:\"|?*\r\n";
-static const QString BAD_NTFS_CHARS = "<>:\"|?*";
-static const QString BAD_HFS_CHARS = ":";
-
-static const QString BAD_FILENAME_CHARS = BAD_WIN_CHARS + "\\/";
-
-QString RemoveInvalidFilenameChars(QString string, QChar replaceWith)
+namespace {
+const QString g_badChars = "<>:\"|?*\r\n!";
+QString removeChars(QString source, QChar replace, const QString& extraChars = "")
 {
-    for (int i = 0; i < string.length(); i++)
-        if (string.at(i) < ' ' || BAD_FILENAME_CHARS.contains(string.at(i)))
-            string[i] = replaceWith;
-    return string;
-}
-
-QString RemoveInvalidPathChars(QString path, QChar replaceWith)
-{
-    QString invalidChars;
-#ifdef Q_OS_WIN
-    invalidChars = BAD_WIN_CHARS;
-#endif
-
-    // the null character is ignored in this check as it was not a problem until now
-    switch (statFS(path).fsType) {
-        case FilesystemType::FAT:  // similar to NTFS
-        /* fallthrough */
-        case FilesystemType::NTFS:
-        /* fallthrough */
-        case FilesystemType::REFS:  // similar to NTFS(should be available only on windows)
-            invalidChars += BAD_NTFS_CHARS;
-            break;
-        // case FilesystemType::EXT:
-        // case FilesystemType::EXT_2_OLD:
-        // case FilesystemType::EXT_2_3_4:
-        // case FilesystemType::XFS:
-        // case FilesystemType::BTRFS:
-        // case FilesystemType::NFS:
-        // case FilesystemType::ZFS:
-        case FilesystemType::APFS:
-        /* fallthrough */
-        case FilesystemType::HFS:
-        /* fallthrough */
-        case FilesystemType::HFSPLUS:
-        /* fallthrough */
-        case FilesystemType::HFSX:
-            invalidChars += BAD_HFS_CHARS;
-            break;
-        // case FilesystemType::FUSEBLK:
-        // case FilesystemType::F2FS:
-        // case FilesystemType::UNKNOWN:
-        default:
-            break;
+    auto badChars = g_badChars;
+    if (!extraChars.isEmpty()) {
+        badChars += extraChars;
     }
 
-    if (invalidChars.size() != 0) {
-        for (int i = 0; i < path.length(); i++) {
-            if (path.at(i) < ' ' || invalidChars.contains(path.at(i))) {
-                path[i] = replaceWith;
-            }
+    for (auto& c : source) {
+        if (c.unicode() < 0x20 || !c.isPrint() || badChars.contains(c)) {
+            c = replace;
         }
     }
 
-    return path;
+    return source;
+}
+}  // namespace
+
+QString RemoveInvalidFilenameChars(QString string, QChar replaceWith)
+{
+    return removeChars(std::move(string), replaceWith, "\\/");
+}
+
+QString RemoveInvalidPathChars(QString string, QChar replaceWith)
+{
+    return removeChars(std::move(string), replaceWith);
 }
 
 QString DirNameFromString(QString string, QString inDir)
@@ -952,7 +945,10 @@ QString createShortcut(QString destination, QString target, QStringList args, QS
         qWarning() << "Couldn't create directories within application";
         return QString();
     }
-    info.open(QIODevice::WriteOnly | QIODevice::Text);
+    if (!info.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        qWarning() << "Failed to open file" << info.fileName() << "for writing:" << info.errorString();
+        return QString();
+    }
 
     QFile(icon).rename(resources.path() + "/Icon.icns");
 
@@ -960,7 +956,10 @@ QString createShortcut(QString destination, QString target, QStringList args, QS
     QString exec = binaryDir.path() + "/Run.command";
 
     QFile f(exec);
-    f.open(QIODevice::WriteOnly | QIODevice::Text);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        qWarning() << "Failed to open file" << f.fileName() << "for writing:" << f.errorString();
+        return QString();
+    }
     QTextStream stream(&f);
 
     auto argstring = quoteArgs(args, "\"", "\\\"");
@@ -1003,7 +1002,7 @@ QString createShortcut(QString destination, QString target, QStringList args, QS
         destination += ".desktop";
     QFile f(destination);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        qWarning() << "Failed to open file '" << f.fileName() << "' for writing!";
+        qWarning() << "Failed to open file" << f.fileName() << "for writing:" << f.errorString();
         return QString();
     }
     QTextStream stream(&f);
@@ -1102,17 +1101,17 @@ QString createShortcut(QString destination, QString target, QStringList args, QS
             hres = ppf->Save(wsz, TRUE);
             if (FAILED(hres)) {
                 qWarning() << "IPresistFile->Save() failed";
-                qWarning() << "hres = " << hres;
+                qWarning() << "hres =" << hres;
             }
             ppf->Release();
         } else {
             qWarning() << "Failed to query IPersistFile interface from IShellLink instance";
-            qWarning() << "hres = " << hres;
+            qWarning() << "hres =" << hres;
         }
         psl->Release();
     } else {
         qWarning() << "Failed to create IShellLink instance";
-        qWarning() << "hres = " << hres;
+        qWarning() << "hres =" << hres;
     }
 
     // go away COM, nobody likes you
@@ -1401,14 +1400,14 @@ bool win_ioctl_clone(const std::wstring& src_path, const std::wstring& dst_path,
     ULONG fs_flags;
     if (!GetVolumeInformationByHandleW(hSourceFile, nullptr, 0, nullptr, nullptr, &fs_flags, nullptr, 0)) {
         ec = std::error_code(GetLastError(), std::system_category());
-        qDebug() << "Failed to get Filesystem information for " << src_path.c_str();
+        qDebug() << "Failed to get Filesystem information for" << src_path.c_str();
         CloseHandle(hSourceFile);
         return false;
     }
     if (!(fs_flags & FILE_SUPPORTS_BLOCK_REFCOUNTING)) {
         SetLastError(ERROR_NOT_CAPABLE);
         ec = std::error_code(GetLastError(), std::system_category());
-        qWarning() << "Filesystem at " << src_path.c_str() << " does not support reflink";
+        qWarning() << "Filesystem at" << src_path.c_str() << "does not support reflink";
         CloseHandle(hSourceFile);
         return false;
     }
@@ -1703,5 +1702,15 @@ QString getUniqueResourceName(const QString& filePath)
     } while (QFile::exists(newFileName));
 
     return newFileName;
+}
+bool removeFiles(QStringList listFile)
+{
+    bool ret = true;
+    // For each file
+    for (int i = 0; i < listFile.count(); i++) {
+        // Remove
+        ret = ret && QFile::remove(listFile.at(i));
+    }
+    return ret;
 }
 }  // namespace FS

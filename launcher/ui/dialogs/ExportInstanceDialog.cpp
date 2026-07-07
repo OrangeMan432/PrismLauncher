@@ -43,6 +43,7 @@
 #include <QMessageBox>
 #include "FileIgnoreProxy.h"
 #include "QObjectPtr.h"
+#include "archive/ExportToZipTask.h"
 #include "ui/dialogs/CustomMessageBox.h"
 #include "ui/dialogs/ProgressDialog.h"
 #include "ui_ExportInstanceDialog.h"
@@ -59,7 +60,7 @@
 #include "Application.h"
 #include "SeparatorPrefixTree.h"
 
-ExportInstanceDialog::ExportInstanceDialog(InstancePtr instance, QWidget* parent)
+ExportInstanceDialog::ExportInstanceDialog(BaseInstance* instance, QWidget* parent)
     : QDialog(parent), m_ui(new Ui::ExportInstanceDialog), m_instance(instance)
 {
     m_ui->setupUi(this);
@@ -97,7 +98,7 @@ ExportInstanceDialog::~ExportInstanceDialog()
 }
 
 /// Save icon to instance's folder is needed
-void SaveIcon(InstancePtr m_instance)
+void SaveIcon(BaseInstance* m_instance)
 {
     auto iconKey = m_instance->iconKey();
     auto iconList = APPLICATION->icons();
@@ -150,7 +151,7 @@ void ExportInstanceDialog::doExport()
         return;
     }
 
-    auto task = makeShared<MMCZip::ExportToZipTask>(output, m_instance->instanceRoot(), files, "", true, true);
+    auto task = makeShared<MMCZip::ExportToZipTask>(output, m_instance->instanceRoot(), files, "", true);
 
     connect(task.get(), &Task::failed, this,
             [this, output](QString reason) { CustomMessageBox::selectable(this, tr("Error"), reason, QMessageBox::Critical)->show(); });

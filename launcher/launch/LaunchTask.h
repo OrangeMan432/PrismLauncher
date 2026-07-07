@@ -39,7 +39,6 @@
 #include <QObjectPtr.h>
 #include <minecraft/MinecraftInstance.h>
 #include <QProcess>
-#include "BaseInstance.h"
 #include "LaunchStep.h"
 #include "LogModel.h"
 #include "MessageLevel.h"
@@ -48,21 +47,21 @@
 class LaunchTask : public Task {
     Q_OBJECT
    protected:
-    explicit LaunchTask(MinecraftInstancePtr instance);
+    explicit LaunchTask(MinecraftInstance* instance);
     void init();
 
    public:
     enum State { NotStarted, Running, Waiting, Failed, Aborted, Finished };
 
    public: /* methods */
-    static shared_qobject_ptr<LaunchTask> create(MinecraftInstancePtr inst);
+    static std::unique_ptr<LaunchTask> create(MinecraftInstance* inst);
     virtual ~LaunchTask() = default;
 
     void appendStep(shared_qobject_ptr<LaunchStep> step);
     void prependStep(shared_qobject_ptr<LaunchStep> step);
     void setCensorFilter(QMap<QString, QString> filter);
 
-    MinecraftInstancePtr instance() { return m_instance; }
+    MinecraftInstance* instance() { return m_instance; }
 
     void setPid(qint64 pid) { m_pid = pid; }
 
@@ -106,8 +105,8 @@ class LaunchTask : public Task {
     void requestLogging();
 
    public slots:
-    void onLogLines(const QStringList& lines, MessageLevel::Enum defaultLevel = MessageLevel::Launcher);
-    void onLogLine(QString line, MessageLevel::Enum defaultLevel = MessageLevel::Launcher);
+    void onLogLines(const QStringList& lines, MessageLevel defaultLevel = MessageLevel::Launcher);
+    void onLogLine(QString line, MessageLevel defaultLevel = MessageLevel::Launcher);
     void onReadyForLaunch();
     void onStepFinished();
     void onProgressReportingRequested();
@@ -116,10 +115,10 @@ class LaunchTask : public Task {
     void finalizeSteps(bool successful, const QString& error);
 
    protected:
-    bool parseXmlLogs(QString const& line, MessageLevel::Enum level);
+    bool parseXmlLogs(QString const& line, MessageLevel level);
 
    protected: /* data */
-    MinecraftInstancePtr m_instance;
+    MinecraftInstance* m_instance;
     shared_qobject_ptr<LogModel> m_logModel;
     QList<shared_qobject_ptr<LaunchStep>> m_steps;
     QMap<QString, QString> m_censorFilter;

@@ -32,11 +32,10 @@ class ResourceDownloadTask : public SequentialTask {
    public:
     explicit ResourceDownloadTask(ModPlatform::IndexedPack::Ptr pack,
                                   ModPlatform::IndexedVersion version,
-                                  std::shared_ptr<ResourceFolderModel> packs,
-                                  bool is_indexed = true,
-                                  QString custom_target_folder = {});
+                                  ResourceFolderModel* packs,
+                                  bool isIndexed = true,
+                                  QString downloadReason = "standalone");
     const QString& getFilename() const { return m_pack_version.fileName; }
-    const QString& getCustomPath() const { return m_custom_target_folder; }
     const QVariant& getVersionID() const { return m_pack_version.fileId; }
     const ModPlatform::IndexedVersion& getVersion() const { return m_pack_version; }
     const ModPlatform::ResourceProvider& getProvider() const { return m_pack->provider; }
@@ -46,8 +45,7 @@ class ResourceDownloadTask : public SequentialTask {
    private:
     ModPlatform::IndexedPack::Ptr m_pack;
     ModPlatform::IndexedVersion m_pack_version;
-    const std::shared_ptr<ResourceFolderModel> m_pack_model;
-    QString m_custom_target_folder;
+    ResourceFolderModel* m_pack_model;
 
     NetJob::Ptr m_filesNetJob;
     LocalResourceUpdateTask::Ptr m_update_task;
@@ -59,5 +57,5 @@ class ResourceDownloadTask : public SequentialTask {
     std::tuple<QString, QString> to_delete{ "", "" };
 
    private slots:
-    void hasOldResource(QString name, QString filename);
+    void hasOldResource(const QString& name, const QString& filename);
 };

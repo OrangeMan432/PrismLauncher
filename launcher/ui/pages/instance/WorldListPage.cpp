@@ -86,7 +86,7 @@ class WorldListProxyModel : public QSortFilterProxyModel {
     }
 };
 
-WorldListPage::WorldListPage(MinecraftInstancePtr inst, std::shared_ptr<WorldList> worlds, QWidget* parent)
+WorldListPage::WorldListPage(MinecraftInstance* inst, WorldList* worlds, QWidget* parent)
     : QMainWindow(parent), m_inst(inst), ui(new Ui::WorldListPage), m_worlds(worlds)
 {
     ui->setupUi(this);
@@ -95,7 +95,7 @@ WorldListPage::WorldListPage(MinecraftInstancePtr inst, std::shared_ptr<WorldLis
 
     WorldListProxyModel* proxy = new WorldListProxyModel(this);
     proxy->setSortCaseSensitivity(Qt::CaseInsensitive);
-    proxy->setSourceModel(m_worlds.get());
+    proxy->setSourceModel(m_worlds);
     proxy->setSortRole(Qt::UserRole);
     ui->worldTreeView->setSortingEnabled(true);
     ui->worldTreeView->setModel(proxy);
@@ -117,12 +117,11 @@ void WorldListPage::openedImpl()
 {
     m_worlds->startWatching();
 
-    auto mInst = std::dynamic_pointer_cast<MinecraftInstance>(m_inst);
-    if (!mInst || !mInst->traits().contains("feature:is_quick_play_singleplayer")) {
+    if (!m_inst || !m_inst->traits().contains("feature:is_quick_play_singleplayer")) {
         ui->toolBar->removeAction(ui->actionJoin);
     }
 
-    auto const setting_name = QString("WideBarVisibility_%1").arg(id());
+    const auto setting_name = QString("WideBarVisibility_%1").arg(id());
     m_wide_bar_setting = APPLICATION->settings()->getOrRegisterSetting(setting_name);
 
     ui->toolBar->setVisibilityState(QByteArray::fromBase64(m_wide_bar_setting->get().toString().toUtf8()));
@@ -237,11 +236,10 @@ void WorldListPage::on_actionData_Packs_triggered()
 
     GenericPageProvider provider(dialog->windowTitle());
 
-    provider.addPageCreator([this, folder] {
-        bool isIndexed = !APPLICATION->settings()->get("ModMetadataDisabled").toBool();
-        auto model = std::make_shared<DataPackFolderModel>(folder, m_inst.get(), isIndexed, true);
-        return new DataPackPage(m_inst.get(), std::move(model));
-    });
+    bool isIndexed = !APPLICATION->settings()->get("ModMetadataDisabled").toBool();
+    m_datapackModel.reset(new DataPackFolderModel(folder, m_inst, isIndexed, true));
+
+    provider.addPageCreator([this] { return new DataPackPage(m_inst, m_datapackModel.get(), this); });
 
     auto layout = new QVBoxLayout(dialog);
 
@@ -261,9 +259,12 @@ void WorldListPage::on_actionData_Packs_triggered()
 
     dialog->setLayout(layout);
 
-    dialog->exec();
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
 
-    APPLICATION->settings()->set("DataPackDownloadGeometry", dialog->saveGeometry().toBase64());
+    connect(dialog, &QDialog::finished, this,
+            [dialog]() { APPLICATION->settings()->set("DataPackDownloadGeometry", dialog->saveGeometry().toBase64()); });
+
+    dialog->open();
 }
 
 void WorldListPage::on_actionReset_Icon_triggered()
@@ -380,8 +381,7 @@ void WorldListPage::worldChanged([[maybe_unused]] const QModelIndex& current, [[
     bool hasIcon = !index.data(WorldList::IconFileRole).isNull();
     ui->actionReset_Icon->setEnabled(enable && hasIcon);
 
-    auto mInst = std::dynamic_pointer_cast<MinecraftInstance>(m_inst);
-    auto supportsJoin = mInst && mInst->traits().contains("feature:is_quick_play_singleplayer");
+    auto supportsJoin = m_inst && m_inst->traits().contains("feature:is_quick_play_singleplayer");
     ui->actionJoin->setEnabled(enable && supportsJoin);
 
     if (!supportsJoin) {
@@ -474,7 +474,7 @@ void WorldListPage::on_actionJoin_triggered()
     }
     auto worldVariant = m_worlds->data(index, WorldList::ObjectRole);
     auto world = (World*)worldVariant.value<void*>();
-    APPLICATION->launch(m_inst, true, false, std::make_shared<MinecraftTarget>(MinecraftTarget::parse(world->folderName(), true)));
+    APPLICATION->launch(m_inst, LaunchMode::Normal, std::make_shared<MinecraftTarget>(MinecraftTarget::parse(world->folderName(), true)));
 }
 
 #include "WorldListPage.moc"

@@ -96,8 +96,6 @@ void EnvironmentVariables::retranslate()
 
 bool EnvironmentVariables::override() const
 {
-    if (!ui->overrideCheckBox->isVisible())
-        return false;
     return ui->overrideCheckBox->isChecked();
 }
 
@@ -106,7 +104,7 @@ QMap<QString, QVariant> EnvironmentVariables::value() const
     QMap<QString, QVariant> result;
     QTreeWidgetItem* item = ui->list->topLevelItem(0);
     for (int i = 1; item != nullptr; item = ui->list->topLevelItem(i++))
-        result[item->text(0)] = item->text(1);
+        result[item->text(0).trimmed()] = item->text(1).trimmed();
 
     return result;
 }

@@ -54,6 +54,7 @@ class Config {
     QString LAUNCHER_GIT;
     QString LAUNCHER_APPID;
     QString LAUNCHER_SVGFILENAME;
+    QString LAUNCHER_ENVNAME;
 
     /// The major version number.
     int VERSION_MAJOR;
@@ -128,7 +129,12 @@ class Config {
     QString NEWS_OPEN_URL;
 
     /**
-     * URL (with arg %1 to be substituted with page-id) that gets opened when the user requests help
+     * URL that gets opened when the user clicks 'Launcher Help'
+     */
+    QString WIKI_URL;
+
+    /**
+     * URL (with arg %1 to be substituted with page-id) that gets opened when the user requests help in a dialog window
      */
     QString HELP_URL;
 
@@ -169,10 +175,10 @@ class Config {
     QString DEFAULT_RESOURCE_BASE = "https://resources.download.minecraft.net/";
     QString LIBRARY_BASE = "https://libraries.minecraft.net/";
     QString IMGUR_BASE_URL = "https://api.imgur.com/3/";
-    QString FMLLIBS_BASE_URL;
+    QString LEGACY_FMLLIBS_BASE_URL;
     QString TRANSLATION_FILES_URL;
 
-    QString MODPACKSCH_API_BASE_URL = "https://api.modpacks.ch/";
+    QString FTB_API_BASE_URL = "https://api.feed-the-beast.com/v1/modpacks/public";
 
     QString LEGACY_FTB_CDN_BASE_URL = "https://dist.creeper.host/FTB2/";
 
@@ -188,8 +194,10 @@ class Config {
     QString MODRINTH_STAGING_URL = "https://staging-api.modrinth.com/v2";
     QString MODRINTH_PROD_URL = "https://api.modrinth.com/v2";
     QStringList MODRINTH_MRPACK_HOSTS{ "cdn.modrinth.com", "github.com", "raw.githubusercontent.com", "gitlab.com" };
+    QString MODRINTH_DOWNLOAD_HOST = "cdn.modrinth.com";
 
     QString FLAME_BASE_URL = "https://api.curseforge.com/v1";
+    QString FLAME_DOWNLOAD_HOST = "edge.forgecdn.net";
 
     QString versionString() const;
     /**

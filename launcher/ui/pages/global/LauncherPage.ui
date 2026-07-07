@@ -41,9 +41,9 @@
       <property name="geometry">
        <rect>
         <x>0</x>
-        <y>0</y>
+        <y>-149</y>
         <width>746</width>
-        <height>1194</height>
+        <height>1222</height>
        </rect>
       </property>
       <layout class="QVBoxLayout" name="verticalLayout_8">
@@ -77,6 +77,16 @@
            <widget class="QRadioButton" name="sortLastLaunchedBtn">
             <property name="text">
              <string>&amp;By last launched</string>
+            </property>
+            <attribute name="buttonGroup">
+             <string notr="true">sortingModeGroup</string>
+            </attribute>
+           </widget>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="sortByPlaytimeBtn">
+            <property name="text">
+             <string>By total time &amp;played</string>
             </property>
             <attribute name="buttonGroup">
              <string notr="true">sortingModeGroup</string>
@@ -251,8 +261,11 @@
           </item>
           <item row="3" column="0">
            <widget class="QLabel" name="labelJavaDir">
+            <property name="toolTip">
+             <string>Folder where Prism Launcher stores automatically downloaded Java versions. Do NOT set this to your system Java installation.</string>
+            </property>
             <property name="text">
-             <string>&amp;Java:</string>
+             <string>&amp;Auto Java Download:</string>
             </property>
             <property name="buddy">
              <cstring>javaDirTextBox</cstring>
@@ -419,12 +432,41 @@
            </widget>
           </item>
           <item>
+           <widget class="QCheckBox" name="showModIncompatCheckBox">
+            <property name="toolTip">
+             <string>Currently this just shows mods which are not marked as compatible with the current Minecraft version.</string>
+            </property>
+            <property name="text">
+             <string>Detect and show mod incompatibilities (experimental)</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QCheckBox" name="modpackUpdatePromptBtn">
             <property name="toolTip">
              <string>When creating a new modpack instance, suggest updating an existing instance instead.</string>
             </property>
             <property name="text">
              <string>Suggest to update an existing instance during modpack installation</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="instanceBox">
+         <property name="title">
+          <string>Instance Creation</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout_3">
+          <item>
+           <widget class="QCheckBox" name="downloadGameFilesBtn">
+            <property name="toolTip">
+             <string>Downloads required game files while creating the instance. Disable this to skip the initial download and fetch files when the instance is launched instead.</string>
+            </property>
+            <property name="text">
+             <string>Download game files during instance creation</string>
             </property>
            </widget>
           </item>
@@ -641,6 +683,12 @@
  </widget>
  <tabstops>
   <tabstop>scrollArea</tabstop>
+  <tabstop>sortByNameBtn</tabstop>
+  <tabstop>sortLastLaunchedBtn</tabstop>
+  <tabstop>sortByPlaytimeBtn</tabstop>
+  <tabstop>askToRenameDirBtn</tabstop>
+  <tabstop>alwaysRenameDirBtn</tabstop>
+  <tabstop>neverRenameDirBtn</tabstop>
   <tabstop>preferMenuBarCheckBox</tabstop>
   <tabstop>autoUpdateCheckBox</tabstop>
   <tabstop>updateIntervalSpinBox</tabstop>
@@ -660,7 +708,9 @@
   <tabstop>downloadsDirMoveCheckBox</tabstop>
   <tabstop>metadataEnableBtn</tabstop>
   <tabstop>dependenciesEnableBtn</tabstop>
+  <tabstop>showModIncompatCheckBox</tabstop>
   <tabstop>modpackUpdatePromptBtn</tabstop>
+  <tabstop>downloadGameFilesBtn</tabstop>
   <tabstop>lineLimitSpinBox</tabstop>
   <tabstop>checkStopLogging</tabstop>
   <tabstop>numberOfConcurrentTasksSpinBox</tabstop>
@@ -671,7 +721,7 @@
  <resources/>
  <connections/>
  <buttongroups>
-  <buttongroup name="sortingModeGroup"/>
   <buttongroup name="renamingBehaviorGroup"/>
+  <buttongroup name="sortingModeGroup"/>
  </buttongroups>
 </ui>

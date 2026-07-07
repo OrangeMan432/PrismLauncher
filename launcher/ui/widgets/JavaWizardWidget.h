@@ -4,9 +4,9 @@
 #include <BaseVersion.h>
 #include <QObjectPtr.h>
 #include <java/JavaChecker.h>
-#include <qcheckbox.h>
 #include <QIcon>
 
+class QCheckBox;
 class QLineEdit;
 class VersionSelectWidget;
 class QSpinBox;

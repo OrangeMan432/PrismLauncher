@@ -36,6 +36,7 @@
 
 #include <QLabel>
 #include <QMessageBox>
+#include <QScrollBar>
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QToolTip>
@@ -75,7 +76,7 @@ InfoFrame::~InfoFrame()
     delete ui;
 }
 
-void InfoFrame::updateWithMod(Mod const& m)
+void InfoFrame::updateWithMod(const Mod& m)
 {
     if (m.type() == ResourceType::FOLDER) {
         clear();
@@ -86,9 +87,9 @@ void InfoFrame::updateWithMod(Mod const& m)
     QString name = "";
     QString link = m.homepage();
     if (m.name().isEmpty())
-        name = m.internal_id();
+        name = m.internalId();
     else
-        name = m.name();
+        name = renderColorCodes(m.name());
 
     if (link.isEmpty())
         text = name;
@@ -103,7 +104,7 @@ void InfoFrame::updateWithMod(Mod const& m)
     if (m.description().isEmpty()) {
         setDescription(QString());
     } else {
-        setDescription(m.description());
+        setDescription(renderColorCodes(m.description()));
     }
 
     setImage(m.icon({ 64, 64 }));
@@ -146,11 +147,12 @@ void InfoFrame::updateWithMod(Mod const& m)
 void InfoFrame::updateWithResource(const Resource& resource)
 {
     const QString homepage = resource.homepage();
+    auto name = renderColorCodes(resource.name());
 
     if (!homepage.isEmpty())
-        setName("<a href=\"" + homepage + "\">" + resource.name() + "</a>");
+        setName("<a href=\"" + homepage + "\">" + name + "</a>");
     else
-        setName(resource.name());
+        setName(name);
 
     setImage();
 }
@@ -181,10 +183,10 @@ QString InfoFrame::renderColorCodes(QString input)
     while (it != input.constEnd()) {
         // is current char § and is there a following char
         if (*it == u'§' && (it + 1) != input.constEnd()) {
-            auto const& code = *(++it);  // incrementing here!
+            const auto& code = *(++it);  // incrementing here!
 
-            auto const color_entry = color_codes_map.constFind(code);
-            auto const tag_entry = formatting_codes_map.constFind(code);
+            const auto color_entry = color_codes_map.constFind(code);
+            const auto tag_entry = formatting_codes_map.constFind(code);
 
             if (color_entry != color_codes_map.constEnd()) {  // color code
                 html += QString("<span style=\"color: %1;\">").arg(color_entry.value());
@@ -227,7 +229,8 @@ void InfoFrame::updateWithResourcePack(ResourcePack& resource_pack)
     setImage(resource_pack.image({ 64, 64 }));
 }
 
-void InfoFrame::updateWithDataPack(DataPack& data_pack) {
+void InfoFrame::updateWithDataPack(DataPack& data_pack)
+{
     setName(renderColorCodes(data_pack.name()));
     setDescription(renderColorCodes(data_pack.description()));
     setImage(data_pack.image({ 64, 64 }));
@@ -268,6 +271,7 @@ void InfoFrame::updateHiddenState()
 
 void InfoFrame::setName(QString text)
 {
+    resetScroll();
     if (text.isEmpty()) {
         ui->nameLabel->setHidden(true);
     } else {
@@ -416,4 +420,10 @@ void InfoFrame::licenseEllipsisHandler([[maybe_unused]] QString link)
 void InfoFrame::boxClosed([[maybe_unused]] int result)
 {
     m_current_box = nullptr;
+}
+
+void InfoFrame::resetScroll()
+{
+    ui->scrollArea->horizontalScrollBar()->setValue(0);
+    ui->scrollArea->verticalScrollBar()->setValue(0);
 }

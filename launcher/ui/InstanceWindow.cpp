@@ -37,7 +37,6 @@
 #include "InstanceWindow.h"
 #include "Application.h"
 
-#include <qlayoutitem.h>
 #include <QCloseEvent>
 #include <QHBoxLayout>
 #include <QMessageBox>
@@ -50,7 +49,7 @@
 
 #include "icons/IconList.h"
 
-InstanceWindow::InstanceWindow(InstancePtr instance, QWidget* parent) : QMainWindow(parent), m_instance(instance)
+InstanceWindow::InstanceWindow(BaseInstance* instance, QWidget* parent) : QMainWindow(parent), m_instance(instance)
 {
     setAttribute(Qt::WA_DeleteOnClose);
 
@@ -76,7 +75,7 @@ InstanceWindow::InstanceWindow(InstancePtr instance, QWidget* parent) : QMainWin
     {
         auto horizontalLayout = new QHBoxLayout(this);
         horizontalLayout->setObjectName(QStringLiteral("horizontalLayout"));
-        horizontalLayout->setContentsMargins(6, -1, 6, -1);
+        horizontalLayout->setContentsMargins(0, 0, 6, 6);
 
         auto btnHelp = new QPushButton(this);
         btnHelp->setText(tr("Help"));
@@ -110,7 +109,7 @@ InstanceWindow::InstanceWindow(InstancePtr instance, QWidget* parent) : QMainWin
 
         m_container->addButtons(horizontalLayout);
 
-        connect(m_instance.get(), &BaseInstance::profilerChanged, this, &InstanceWindow::updateButtons);
+        connect(m_instance, &BaseInstance::profilerChanged, this, &InstanceWindow::updateButtons);
         connect(APPLICATION, &Application::globalSettingsApplied, this, &InstanceWindow::updateButtons);
     }
 
@@ -126,13 +125,13 @@ InstanceWindow::InstanceWindow(InstancePtr instance, QWidget* parent) : QMainWin
     {
         auto launchTask = m_instance->getLaunchTask();
         instanceLaunchTaskChanged(launchTask);
-        connect(m_instance.get(), &BaseInstance::launchTaskChanged, this, &InstanceWindow::instanceLaunchTaskChanged);
-        connect(m_instance.get(), &BaseInstance::runningStatusChanged, this, &InstanceWindow::runningStateChanged);
+        connect(m_instance, &BaseInstance::launchTaskChanged, this, &InstanceWindow::instanceLaunchTaskChanged);
+        connect(m_instance, &BaseInstance::runningStatusChanged, this, &InstanceWindow::runningStateChanged);
     }
 
     // set up instance destruction detection
     {
-        connect(m_instance.get(), &BaseInstance::statusChanged, this, &InstanceWindow::on_instanceStatusChanged);
+        connect(m_instance, &BaseInstance::statusChanged, this, &InstanceWindow::on_instanceStatusChanged);
     }
 
     // add ourself as the modpack page's instance window
@@ -165,7 +164,7 @@ void InstanceWindow::updateButtons()
     m_launchButton->setMenu(launchMenu);
 }
 
-void InstanceWindow::instanceLaunchTaskChanged(shared_qobject_ptr<LaunchTask> proc)
+void InstanceWindow::instanceLaunchTaskChanged(LaunchTask* proc)
 {
     m_proc = proc;
 }

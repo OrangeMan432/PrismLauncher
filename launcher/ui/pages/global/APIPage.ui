@@ -10,7 +10,7 @@
     <height>620</height>
    </rect>
   </property>
-  <layout class="QVBoxLayout" name="verticalLayout_6">
+  <layout class="QVBoxLayout" name="verticalLayout_2">
    <property name="leftMargin">
     <number>0</number>
    </property>
@@ -32,9 +32,9 @@
       <property name="geometry">
        <rect>
         <x>0</x>
-        <y>-216</y>
-        <width>816</width>
-        <height>832</height>
+        <y>0</y>
+        <width>825</width>
+        <height>1236</height>
        </rect>
       </property>
       <layout class="QVBoxLayout" name="verticalLayout">
@@ -126,6 +126,13 @@
             </property>
            </widget>
           </item>
+          <item>
+           <widget class="QCheckBox" name="metaRefreshOnLaunchCB">
+            <property name="text">
+             <string>Refresh on launch</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>
@@ -157,6 +164,34 @@
              <string>Use Default</string>
             </property>
            </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupBox_fmllibs">
+         <property name="title">
+          <string>Legacy FML Libraries Server</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout_8">
+          <item>
+           <widget class="QLabel" name="label">
+            <property name="text">
+             <string>You can set this to another server if you have problems with downloading legacy FML libraries (Minecraft 1.5.2 and earlier).</string>
+            </property>
+            <property name="textFormat">
+             <enum>Qt::RichText</enum>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="openExternalLinks">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="legacyFMLLibsURL"/>
           </item>
          </layout>
         </widget>
@@ -348,6 +383,13 @@
             </property>
             <property name="wordWrap">
              <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="FallbackMRBlockedMods">
+            <property name="text">
+             <string>Enable fallback to Modrinth for blocked mods</string>
             </property>
            </widget>
           </item>

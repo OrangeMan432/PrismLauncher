@@ -133,7 +133,7 @@ void POTranslatorPrivate::reload()
 {
     QFile file(filename);
     if (!file.open(QFile::OpenMode::enum_type::ReadOnly | QFile::OpenMode::enum_type::Text)) {
-        qDebug() << "Failed to open PO file:" << filename;
+        qDebug() << "Failed to open PO file:" << filename << "error:" << file.errorString();
         return;
     }
 
@@ -183,8 +183,7 @@ void POTranslatorPrivate::reload()
                 nextFuzzy = true;
             }
         } else if (line.startsWith('"')) {
-            QByteArray temp;
-            QByteArray* out = &temp;
+            QByteArray* out = nullptr;
 
             switch (mode) {
                 case Mode::First:
@@ -253,7 +252,7 @@ void POTranslatorPrivate::reload()
                 mode = Mode::MessageString;
             }
         } else {
-            qDebug() << "I did not understand line: " << lineNumber << ":" << QString::fromUtf8(line);
+            qDebug() << "I did not understand line:" << lineNumber << ":" << QString::fromUtf8(line);
         }
         lineNumber++;
     }

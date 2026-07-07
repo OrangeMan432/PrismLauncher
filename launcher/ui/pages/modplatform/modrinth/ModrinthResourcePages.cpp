@@ -38,7 +38,7 @@
 
 #include "ModrinthResourcePages.h"
 #include "ui/pages/modplatform/DataPackModel.h"
-#include "ui_ResourcePage.h"
+#include "../ui_ResourcePage.h"
 
 #include "modplatform/modrinth/ModrinthAPI.h"
 
@@ -165,10 +165,10 @@ std::unique_ptr<ModFilterWidget> ModrinthModPage::createFilterWidget()
 
 void ModrinthModPage::prepareProviderCategories()
 {
-    auto response = std::make_shared<QByteArray>();
-    m_categoriesTask = ModrinthAPI::getModCategories(response);
+    auto [categoriesTask, response] = ModrinthAPI::getModCategories();
+    m_categoriesTask = categoriesTask;
     connect(m_categoriesTask.get(), &Task::succeeded, [this, response]() {
-        auto categories = ModrinthAPI::loadModCategories(response);
+        auto categories = ModrinthAPI::loadModCategories(*response);
         m_filter_widget->setCategories(categories);
     });
     m_categoriesTask->start();

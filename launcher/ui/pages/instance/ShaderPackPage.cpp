@@ -47,7 +47,7 @@
 #include "ui/dialogs/ResourceDownloadDialog.h"
 #include "ui/dialogs/ResourceUpdateDialog.h"
 
-ShaderPackPage::ShaderPackPage(MinecraftInstance* instance, std::shared_ptr<ShaderPackFolderModel> model, QWidget* parent)
+ShaderPackPage::ShaderPackPage(MinecraftInstance* instance, ShaderPackFolderModel* model, QWidget* parent)
     : ExternalResourcesPage(instance, model, parent), m_model(model)
 {
     ui->actionDownloadItem->setText(tr("Download Packs"));
@@ -61,9 +61,9 @@ ShaderPackPage::ShaderPackPage(MinecraftInstance* instance, std::shared_ptr<Shad
     connect(ui->actionUpdateItem, &QAction::triggered, this, &ShaderPackPage::updateShaderPacks);
     ui->actionsToolbar->insertActionBefore(ui->actionAddItem, ui->actionUpdateItem);
 
-    auto updateMenu = new QMenu(this);
+    auto* updateMenu = new QMenu(this);
 
-    auto update = updateMenu->addAction(ui->actionUpdateItem->text());
+    auto* update = updateMenu->addAction(ui->actionUpdateItem->text());
     connect(update, &QAction::triggered, this, &ShaderPackPage::updateShaderPacks);
 
     updateMenu->addAction(ui->actionResetItemMetadata);
@@ -78,8 +78,9 @@ ShaderPackPage::ShaderPackPage(MinecraftInstance* instance, std::shared_ptr<Shad
 
 void ShaderPackPage::downloadShaderPack()
 {
-    if (m_instance->typeName() != "Minecraft")
+    if (m_instance->typeName() != "Minecraft") {
         return;  // this is a null instance or a legacy instance
+    }
 
     m_downloadDialog = new ResourceDownload::ShaderPackDownloadDialog(this, m_model, m_instance);
     connect(this, &QObject::destroyed, m_downloadDialog, &QDialog::close);
@@ -90,9 +91,9 @@ void ShaderPackPage::downloadShaderPack()
 
 void ShaderPackPage::downloadDialogFinished(int result)
 {
-    if (result) {
-        auto tasks = new ConcurrentTask("Download Shader Packs", APPLICATION->settings()->get("NumberOfConcurrentDownloads").toInt());
-        connect(tasks, &Task::failed, [this, tasks](QString reason) {
+    if (result != 0) {
+        auto* tasks = new ConcurrentTask("Download Shader Packs", APPLICATION->settings()->get("NumberOfConcurrentDownloads").toInt());
+        connect(tasks, &Task::failed, [this, tasks](const QString& reason) {
             CustomMessageBox::selectable(this, tr("Error"), reason, QMessageBox::Critical)->show();
             tasks->deleteLater();
         });
@@ -102,8 +103,9 @@ void ShaderPackPage::downloadDialogFinished(int result)
         });
         connect(tasks, &Task::succeeded, [this, tasks]() {
             QStringList warnings = tasks->warnings();
-            if (warnings.count())
+            if (warnings.count()) {
                 CustomMessageBox::selectable(this, tr("Warnings"), warnings.join('\n'), QMessageBox::Warning)->show();
+            }
 
             tasks->deleteLater();
         });
@@ -122,16 +124,17 @@ void ShaderPackPage::downloadDialogFinished(int result)
 
         m_model->update();
     }
-    if (m_downloadDialog)
+    if (m_downloadDialog) {
         m_downloadDialog->deleteLater();
+    }
 }
 
 void ShaderPackPage::updateShaderPacks()
 {
-    if (m_instance->typeName() != "Minecraft")
+    if (m_instance->typeName() != "Minecraft") {
         return;  // this is a null instance or a legacy instance
+    }
 
-    auto profile = static_cast<MinecraftInstance*>(m_instance)->getPackProfile();
     if (APPLICATION->settings()->get("ModMetadataDisabled").toBool()) {
         QMessageBox::critical(this, tr("Error"), tr("Shader pack updates are unavailable when metadata is disabled!"));
         return;
@@ -145,27 +148,29 @@ void ShaderPackPage::updateShaderPacks()
                                          QMessageBox::Warning, QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
                 ->exec();
 
-        if (response != QMessageBox::Yes)
+        if (response != QMessageBox::Yes) {
             return;
+        }
     }
     auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
 
-    auto mods_list = m_model->selectedResources(selection);
-    bool use_all = mods_list.empty();
-    if (use_all)
-        mods_list = m_model->allResources();
+    auto modsList = m_model->selectedResources(selection);
+    bool useAll = modsList.empty();
+    if (useAll) {
+        modsList = m_model->allResources();
+    }
 
-    ResourceUpdateDialog update_dialog(this, m_instance, m_model, mods_list, false);
-    update_dialog.checkCandidates();
+    ResourceUpdateDialog updateDialog(this, m_instance, m_model, modsList, false);
+    updateDialog.checkCandidates();
 
-    if (update_dialog.aborted()) {
+    if (updateDialog.aborted()) {
         CustomMessageBox::selectable(this, tr("Aborted"), tr("The shader pack updater was aborted!"), QMessageBox::Warning)->show();
         return;
     }
-    if (update_dialog.noUpdates()) {
-        QString message{ tr("'%1' is up-to-date! :)").arg(mods_list.front()->name()) };
-        if (mods_list.size() > 1) {
-            if (use_all) {
+    if (updateDialog.noUpdates()) {
+        QString message{ tr("'%1' is up-to-date! :)").arg(modsList.front()->name()) };
+        if (modsList.size() > 1) {
+            if (useAll) {
                 message = tr("All shader packs are up-to-date! :)");
             } else {
                 message = tr("All selected shader packs are up-to-date! :)");
@@ -175,9 +180,9 @@ void ShaderPackPage::updateShaderPacks()
         return;
     }
 
-    if (update_dialog.exec()) {
-        auto tasks = new ConcurrentTask("Download Shader Packs", APPLICATION->settings()->get("NumberOfConcurrentDownloads").toInt());
-        connect(tasks, &Task::failed, [this, tasks](QString reason) {
+    if (updateDialog.exec() != 0) {
+        auto* tasks = new ConcurrentTask("Download Shader Packs", APPLICATION->settings()->get("NumberOfConcurrentDownloads").toInt());
+        connect(tasks, &Task::failed, [this, tasks](const QString& reason) {
             CustomMessageBox::selectable(this, tr("Error"), reason, QMessageBox::Critical)->show();
             tasks->deleteLater();
         });
@@ -193,7 +198,7 @@ void ShaderPackPage::updateShaderPacks()
             tasks->deleteLater();
         });
 
-        for (auto task : update_dialog.getTasks()) {
+        for (const auto& task : updateDialog.getTasks()) {
             tasks->addTask(task);
         }
 
@@ -209,8 +214,9 @@ void ShaderPackPage::deleteShaderPackMetadata()
 {
     auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
     auto selectionCount = m_model->selectedShaderPacks(selection).length();
-    if (selectionCount == 0)
+    if (selectionCount == 0) {
         return;
+    }
     if (selectionCount > 1) {
         auto response = CustomMessageBox::selectable(this, tr("Confirm Removal"),
                                                      tr("You are about to remove the metadata for %1 shader packs.\n"
@@ -219,8 +225,9 @@ void ShaderPackPage::deleteShaderPackMetadata()
                                                      QMessageBox::Warning, QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
                             ->exec();
 
-        if (response != QMessageBox::Yes)
+        if (response != QMessageBox::Yes) {
             return;
+        }
     }
 
     m_model->deleteMetadata(selection);
@@ -228,8 +235,9 @@ void ShaderPackPage::deleteShaderPackMetadata()
 
 void ShaderPackPage::changeShaderPackVersion()
 {
-    if (m_instance->typeName() != "Minecraft")
+    if (m_instance->typeName() != "Minecraft") {
         return;  // this is a null instance or a legacy instance
+    }
 
     if (APPLICATION->settings()->get("ModMetadataDisabled").toBool()) {
         QMessageBox::critical(this, tr("Error"), tr("Shader pack updates are unavailable when metadata is disabled!"));
@@ -238,15 +246,17 @@ void ShaderPackPage::changeShaderPackVersion()
 
     const QModelIndexList rows = ui->treeView->selectionModel()->selectedRows();
 
-    if (rows.count() != 1)
+    if (rows.count() != 1) {
         return;
+    }
 
     Resource& resource = m_model->at(m_filterModel->mapToSource(rows[0]).row());
 
-    if (resource.metadata() == nullptr)
+    if (resource.metadata() == nullptr) {
         return;
+    }
 
-    m_downloadDialog = new ResourceDownload::ShaderPackDownloadDialog(this, m_model, m_instance);
+    m_downloadDialog = new ResourceDownload::ShaderPackDownloadDialog(this, m_model, m_instance, true);
     connect(this, &QObject::destroyed, m_downloadDialog, &QDialog::close);
     connect(m_downloadDialog, &QDialog::finished, this, &ShaderPackPage::downloadDialogFinished);
 

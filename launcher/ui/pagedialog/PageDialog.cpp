@@ -21,6 +21,7 @@
 #include <QVBoxLayout>
 
 #include "Application.h"
+#include "settings/SettingsObject.h"
 
 #include "ui/widgets/PageContainer.h"
 
@@ -46,7 +47,7 @@ PageDialog::PageDialog(BasePageProvider* pageProvider, QString defaultId, QWidge
     buttons->button(QDialogButtonBox::Ok)->setText(tr("&OK"));
     buttons->button(QDialogButtonBox::Cancel)->setText(tr("&Cancel"));
     buttons->button(QDialogButtonBox::Help)->setText(tr("Help"));
-    buttons->setContentsMargins(6, 0, 6, 0);
+    buttons->setContentsMargins(0, 0, 6, 6);
     m_container->addButtons(buttons);
 
     connect(buttons->button(QDialogButtonBox::Ok), &QPushButton::clicked, this, &PageDialog::accept);

@@ -62,7 +62,6 @@ APIPage::APIPage(QWidget* parent) : QWidget(parent), ui(new Ui::APIPage)
     static const QRegularExpression s_validUrlRegExp("https?://.+");
     static const QRegularExpression s_validMSAClientID(
         QRegularExpression::anchoredPattern("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"));
-    static const QRegularExpression s_validFlameKey(QRegularExpression::anchoredPattern("\\$2[ayb]\\$.{56}"));
 
     ui->setupUi(this);
 
@@ -78,10 +77,12 @@ APIPage::APIPage(QWidget* parent) : QWidget(parent), ui(new Ui::APIPage)
     ui->metaURL->setValidator(new QRegularExpressionValidator(s_validUrlRegExp, ui->metaURL));
     ui->resourceURL->setValidator(new QRegularExpressionValidator(s_validUrlRegExp, ui->resourceURL));
     ui->baseURLEntry->setValidator(new QRegularExpressionValidator(s_validUrlRegExp, ui->baseURLEntry));
+    ui->legacyFMLLibsURL->setValidator(new QRegularExpressionValidator(s_validUrlRegExp, ui->legacyFMLLibsURL));
     ui->msaClientID->setValidator(new QRegularExpressionValidator(s_validMSAClientID, ui->msaClientID));
-    ui->flameKey->setValidator(new QRegularExpressionValidator(s_validFlameKey, ui->flameKey));
 
     ui->metaURL->setPlaceholderText(BuildConfig.META_URL);
+    ui->resourceURL->setPlaceholderText(BuildConfig.DEFAULT_RESOURCE_BASE);
+    ui->legacyFMLLibsURL->setPlaceholderText(BuildConfig.LEGACY_FMLLIBS_BASE_URL);
     ui->userAgentLineEdit->setPlaceholderText(BuildConfig.USER_AGENT);
 
     loadSettings();
@@ -134,12 +135,19 @@ void APIPage::loadSettings()
 
     ui->pasteTypeComboBox->setCurrentIndex(pasteTypeIndex);
 
+    if (bool fallbackMRBlockedMods = s->get("FallbackMRBlockedMods").toBool()) {
+        ui->FallbackMRBlockedMods->setChecked(fallbackMRBlockedMods);
+    }
+
     QString msaClientID = s->get("MSAClientIDOverride").toString();
     ui->msaClientID->setText(msaClientID);
     QString metaURL = s->get("MetaURLOverride").toString();
     ui->metaURL->setText(metaURL);
-    QString resourceURL = s->get("ResourceURL").toString();
+    ui->metaRefreshOnLaunchCB->setCheckState(s->get("MetaRefreshOnLaunch").toBool() ? Qt::Checked : Qt::Unchecked);
+    QString resourceURL = s->get("ResourceURLOverride").toString();
     ui->resourceURL->setText(resourceURL);
+    QString fmlLibsURL = s->get("LegacyFMLLibsURLOverride").toString();
+    ui->legacyFMLLibsURL->setText(fmlLibsURL);
     QString flameKey = s->get("FlameKeyOverride").toString();
     ui->flameKey->setText(flameKey);
     QString modrinthToken = s->get("ModrinthToken").toString();
@@ -160,30 +168,36 @@ void APIPage::applySettings()
     s->set("MSAClientIDOverride", msaClientID);
     QUrl metaURL(ui->metaURL->text());
     QUrl resourceURL(ui->resourceURL->text());
-    // Add required trailing slash
-    if (!metaURL.isEmpty() && !metaURL.path().endsWith('/')) {
-        QString path = metaURL.path();
-        path.append('/');
-        metaURL.setPath(path);
-    }
+    QUrl fmlLibsURL(ui->legacyFMLLibsURL->text());
 
-    if (!resourceURL.isEmpty() && !resourceURL.path().endsWith('/')) {
-        QString path = resourceURL.path();
-        path.append('/');
-        resourceURL.setPath(path);
-    }
-    // Don't allow HTTP, since meta is basically RCE with all the jar files.
-    if (!metaURL.isEmpty() && metaURL.scheme() == "http") {
-        metaURL.setScheme("https");
-    }
+    auto addRequiredTrailingSlash = [](QUrl& url) {
+        if (!url.isEmpty() && !url.path().endsWith('/')) {
+            QString path = url.path();
+            path.append('/');
+            url.setPath(path);
+        }
+    };
+    addRequiredTrailingSlash(metaURL);
+    addRequiredTrailingSlash(resourceURL);
+    addRequiredTrailingSlash(fmlLibsURL);
 
-    // Also don't allow HTTP
-    if (!resourceURL.isEmpty() && resourceURL.scheme() == "http") {
-        resourceURL.setScheme("https");
-    }
+    auto isLocalhost = [](const QUrl& url) { return url.host() == "localhost" || url.host() == "127.0.0.1" || url.host() == "::1"; };
+    auto isUnsafe = [isLocalhost](const QUrl& url) { return !url.isEmpty() && url.scheme() == "http" && !isLocalhost(url); };
+    auto upgradeToHTTPS = [isUnsafe](QUrl& url) {
+        if (isUnsafe(url)) {
+            url.setScheme("https");
+        }
+    };
 
+    upgradeToHTTPS(metaURL);
+    upgradeToHTTPS(resourceURL);
+    upgradeToHTTPS(fmlLibsURL);
+
+    s->set("FallbackMRBlockedMods", ui->FallbackMRBlockedMods->checkState());
     s->set("MetaURLOverride", metaURL.toString());
-    s->set("ResourceURL", resourceURL.toString());
+    s->set("MetaRefreshOnLaunch", ui->metaRefreshOnLaunchCB->checkState() == Qt::Checked);
+    s->set("ResourceURLOverride", resourceURL.toString());
+    s->set("LegacyFMLLibsURLOverride", fmlLibsURL.toString());
     QString flameKey = ui->flameKey->text();
     s->set("FlameKeyOverride", flameKey);
     QString modrinthToken = ui->modrinthToken->text();

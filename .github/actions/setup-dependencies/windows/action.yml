@@ -1,4 +1,5 @@
 name: Setup Windows Dependencies
+description: Install and setup dependencies for building Prism Launcher
 
 inputs:
   build-type:
@@ -57,7 +58,7 @@ runs:
       if: ${{ inputs.msystem == '' }}
       shell: bash
       run: |
-        echo "CMAKE_TOOLCHAIN_FILE=$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> "$GITHUB_ENV"
+        echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
 
     - name: Setup MSYS2 (MinGW)
       if: ${{ inputs.msystem != '' }}
@@ -76,12 +77,11 @@ runs:
           qt6-base:p
           qt6-svg:p
           qt6-imageformats:p
-          qt6-5compat:p
           qt6-networkauth:p
           cmark:p
           qrencode:p
           tomlplusplus:p
-          quazip-qt6:p
+          libarchive:p
 
     - name: List pacman packages (MinGW)
       if: ${{ inputs.msystem != '' }}
@@ -91,7 +91,7 @@ runs:
 
     - name: Retrieve ccache cache (MinGW)
       if: ${{ inputs.msystem != '' && inputs.build-type == 'Debug' }}
-      uses: actions/cache@v4.3.0
+      uses: actions/cache@v5.0.5
       with:
         path: '${{ github.workspace }}\.ccache'
         key: ${{ runner.os }}-mingw-w64-ccache-${{ github.run_id }}

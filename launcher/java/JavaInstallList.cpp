@@ -41,6 +41,7 @@
 #include <algorithm>
 
 #include "Application.h"
+#include "settings/SettingsObject.h"
 #include "java/JavaChecker.h"
 #include "java/JavaInstallList.h"
 #include "java/JavaUtils.h"
@@ -50,8 +51,9 @@ JavaInstallList::JavaInstallList(QObject* parent, bool onlyManagedVersions)
     : BaseVersionList(parent), m_only_managed_versions(onlyManagedVersions)
 {}
 
-Task::Ptr JavaInstallList::getLoadTask()
+Task::Ptr JavaInstallList::getLoadTask(bool forceReload)
 {
+    Q_UNUSED(forceReload)
     load();
     return getCurrentTask();
 }
@@ -107,7 +109,7 @@ QVariant JavaInstallList::data(const QModelIndex& index, int role) const
         case VersionRole:
             return version->id.toString();
         case RecommendedRole:
-            return version->recommended;
+            return false;
         case PathRole:
             return version->path;
         case CPUArchitectureRole:
@@ -127,10 +129,6 @@ void JavaInstallList::updateListData(QList<BaseVersion::Ptr> versions)
     beginResetModel();
     m_vlist = versions;
     sortVersions();
-    if (m_vlist.size()) {
-        auto best = std::dynamic_pointer_cast<JavaInstall>(m_vlist[0]);
-        best->recommended = true;
-    }
     endResetModel();
     m_status = Status::Done;
     m_load_task.reset();
