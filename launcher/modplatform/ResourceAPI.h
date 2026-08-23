@@ -55,8 +55,6 @@
 /* Simple class with a common interface for interacting with APIs */
 class ResourceAPI {
    public:
-    virtual ~ResourceAPI() = default;
-
     struct SortingMethod {
         // The index of the sorting method. Used to allow for arbitrary ordering in the list of methods.
         // Used by Flame in the API request.
@@ -83,7 +81,7 @@ class ResourceAPI {
         std::optional<SortingMethod> sorting;
         std::optional<ModPlatform::ModLoaderTypes> loaders;
         std::optional<std::vector<Version>> versions;
-        std::optional<ModPlatform::Side> side;
+        std::optional<ModPlatform::SideType> side;
         std::optional<QStringList> categoryIds;
         bool openSource{};
     };
@@ -123,6 +121,8 @@ class ResourceAPI {
     virtual Task::Ptr getDependencyVersion(DependencySearchArgs&&, Callback<ModPlatform::IndexedVersion>&&) const;
 
    protected:
+    ~ResourceAPI() = default;
+
     inline QString debugName() const { return "External resource API"; }
 
     QString mapMCVersionToModrinth(Version v) const;
@@ -156,4 +156,8 @@ class ResourceAPI {
      */
 
     virtual void loadExtraPackInfo(ModPlatform::IndexedPack&, QJsonObject&) const = 0;
+
+    virtual std::pair<Task::Ptr, QByteArray*> getModCategories() const = 0;
+
+    virtual QList<ModPlatform::Category> loadModCategories(const QByteArray& response) const = 0;
 };
