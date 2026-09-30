@@ -21,8 +21,15 @@
 
 namespace ResourceDownload {
 
-ModModel::ModModel(BaseInstance& baseInst, const ResourceAPI* api, const QString& debugName, QString metaEntryBase)
-    : ResourceModel(api), m_baseInstance(baseInst), m_debugName(debugName + " (Model)"), m_metaEntryBase(std::move(metaEntryBase))
+ModModel::ModModel(BaseInstance& baseInst,
+                   ResourceFolderModel* resourceList,
+                   const ResourceAPI* api,
+                   const QString& debugName,
+                   QString metaEntryBase)
+    : ResourceModel(resourceList, api)
+    , m_baseInstance(baseInst)
+    , m_debugName(debugName + " (Model)")
+    , m_metaEntryBase(std::move(metaEntryBase))
 {}
 
 /******** Make data requests ********/
@@ -52,15 +59,18 @@ ResourceAPI::SearchArgs ModModel::createSearchArguments()
 
     auto sort = getCurrentSortingMethodByIndex();
 
-    return { .type = ModPlatform::ResourceType::Mod,
-             .offset = m_next_search_offset,
-             .search = m_search_term,
-             .sorting = sort,
-             .loaders = loaders,
-             .versions = versions,
-             .side = side,
-             .categoryIds = categories,
-             .openSource = m_filter->openSource };
+    return {
+        .type = ModPlatform::ResourceType::Mod,
+        .offset = m_nextSearchOffset,
+        .search = m_searchTerm,
+        .sorting = sort,
+        .loaders = loaders,
+        .versions = versions,
+        .side = side,
+        .categoryIds = categories,
+        .openSource = m_filter->openSource,
+        .excludeDisclosureTypes = m_filter->excludeDisclosureTypes,
+    };
 }
 
 ResourceAPI::VersionSearchArgs ModModel::createVersionsArguments(const QModelIndex& index)
@@ -91,36 +101,14 @@ ResourceAPI::ProjectInfoArgs ModModel::createInfoArguments(const QModelIndex& in
 
 void ModModel::searchWithTerm(const QString& term, unsigned int sort, bool filterChanged)
 {
-    if (m_search_term == term && m_search_term.isNull() == term.isNull() && m_current_sort_index == sort && !filterChanged) {
+    if (m_searchTerm == term && m_searchTerm.isNull() == term.isNull() && m_currentSortIndex == sort && !filterChanged) {
         return;
     }
 
     setSearchTerm(term);
-    m_current_sort_index = sort;
+    m_currentSortIndex = sort;
 
     refresh();
-}
-
-bool ModModel::isPackInstalled(ModPlatform::IndexedPack::Ptr pack) const
-{
-    auto allMods = static_cast<MinecraftInstance&>(m_baseInstance).loaderModList()->allMods();
-    return std::ranges::any_of(allMods, [pack](Mod* mod) {
-        if (auto meta = mod->metadata(); meta) {
-            return meta->provider == pack->provider && meta->project_id == pack->addonId;
-        }
-        return false;
-    });
-}
-
-QVariant ModModel::getInstalledPackVersion(ModPlatform::IndexedPack::Ptr pack) const
-{
-    auto allMods = static_cast<MinecraftInstance&>(m_baseInstance).loaderModList()->allMods();
-    for (auto* mod : allMods) {
-        if (auto meta = mod->metadata(); meta && meta->provider == pack->provider && meta->project_id == pack->addonId) {
-            return meta->version();
-        }
-    }
-    return {};
 }
 
 namespace {

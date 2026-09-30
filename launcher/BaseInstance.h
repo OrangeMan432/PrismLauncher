@@ -154,6 +154,7 @@ class BaseInstance : public QObject {
     QString notes() const;
     void setNotes(const QString& val);
 
+    QString getPreLoadCommand();
     QString getPreLaunchCommand();
     QString getPostExitCommand();
     QString getWrapperCommand();
@@ -235,15 +236,6 @@ class BaseInstance : public QObject {
         }
     }
 
-    bool hasUpdateAvailable() const { return m_hasUpdate; }
-    void setUpdateAvailable(bool value)
-    {
-        if (m_hasUpdate != value) {
-            m_hasUpdate = value;
-            emit propertiesChanged();
-        }
-    }
-
     bool hasCrashed() const { return m_crashed; }
     void setCrashed(bool value)
     {
@@ -314,7 +306,6 @@ class BaseInstance : public QObject {
     QString m_uuid;
     Status m_status = Status::Present;
     bool m_crashed = false;
-    bool m_hasUpdate = false;
     bool m_hasBrokenVersion = false;
 
     SettingsObject* m_globalSettings;

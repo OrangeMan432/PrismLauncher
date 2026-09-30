@@ -102,6 +102,53 @@ struct SideType : EnumWrapper<SideType, SideTypeValue> {
     using Base::Base; /* inherit ctor */
 };
 
+enum class DisclosureTypeValue : std::uint8_t {
+    Unknown,
+    AIContent,
+    AIContentCode,
+    AIContentAssets,
+    AIContentText,
+    AIContentFunctionality,
+    Advertisements,
+    EpilepsyTriggers,
+    SystemInteractions,
+    Telemetry,
+    TelemetryOptIn,
+    TelemetryOptOut,
+    TelemetryAlwaysActive,
+    DerivativeWork,
+    PaidFeatures,
+    Archived,
+};
+struct DisclosureType : EnumWrapper<DisclosureType, DisclosureTypeValue> {
+    static constexpr auto invalid() { return Unknown; };
+
+    static constexpr auto mapping()
+    {
+        return std::array{
+            std::pair{ AIContent, "ai_content" },
+            std::pair{ AIContentCode, "ai_content_code" },
+            std::pair{ AIContentAssets, "ai_content_assets" },
+            std::pair{ AIContentText, "ai_content_text" },
+            std::pair{ AIContentFunctionality, "ai_content_functionality" },
+            std::pair{ Advertisements, "advertisements" },
+            std::pair{ EpilepsyTriggers, "epilepsy_triggers" },
+            std::pair{ SystemInteractions, "system_interactions" },
+            std::pair{ Telemetry, "telemetry" },
+            std::pair{ TelemetryOptIn, "telemetry_opt_in" },
+            std::pair{ TelemetryOptOut, "telemetry_opt_out" },
+            std::pair{ TelemetryAlwaysActive, "telemetry_always_active" },
+            std::pair{ DerivativeWork, "derivative_work" },
+            std::pair{ PaidFeatures, "paid_features" },
+            std::pair{ Archived, "archived" },
+        };
+    };
+
+    using enum DisclosureTypeValue;
+    using Base = EnumWrapper<DisclosureType, DisclosureTypeValue>;
+    using Base::Base; /* inherit ctor */
+};
+
 namespace ProviderCapabilities {
 const char* name(ResourceProvider);
 QString readableName(ResourceProvider);
@@ -128,6 +175,56 @@ struct IndexedVersionType : EnumWrapper<IndexedVersionType, IndexedVersionTypeVa
         return std::array{ std::pair{ Unknown, "Unknown" }, std::pair{ Release, "Release" }, std::pair{ Beta, "Beta" },
                            std::pair{ Alpha, "Alpha" } };
     };
+
+    static IndexedVersionType fromString(const QString& str)
+    {
+        for (auto&& [e, name] : mapping()) {
+            if (str.compare(name, Qt::CaseInsensitive) == 0) {
+                return IndexedVersionType(e);
+            }
+        }
+        return IndexedVersionType(invalid());
+    }
+
+    [[nodiscard]] auto toModrinth() const -> QString
+    {
+        switch (value()) {
+            case Release:
+                return "release";
+            case Beta:
+                return "beta";
+            case Alpha:
+                return "alpha";
+            default:
+                return {};
+        }
+    }
+
+    static auto fromStringList(const QStringList& list) -> std::vector<IndexedVersionType>
+    {
+        std::vector<IndexedVersionType> out;
+        out.reserve(list.size());
+        for (const auto& str : list) {
+            auto type = fromString(str);
+            if (type.isValid()) {
+                out.push_back(type);
+            }
+        }
+        return out;
+    }
+
+    static auto toModrinthList(const std::vector<IndexedVersionType>& types) -> QStringList
+    {
+        QStringList out;
+        out.reserve(types.size());
+        for (const auto& type : types) {
+            const auto s = type.toModrinth();
+            if (!s.isEmpty()) {
+                out.append(s);
+            }
+        }
+        return out;
+    }
 
     using enum IndexedVersionTypeValue;
     using Base = EnumWrapper<IndexedVersionType, IndexedVersionTypeValue>;

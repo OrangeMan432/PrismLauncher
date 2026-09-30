@@ -13,6 +13,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QUrl>
 #include <utility>
 
 class ModrinthAPI final : public ResourceAPI {
@@ -27,17 +28,23 @@ class ModrinthAPI final : public ResourceAPI {
 
     static std::pair<Task::Ptr, QByteArray*> currentVersions(const QStringList& hashes, const QString& hashFormat);
 
-    std::pair<Task::Ptr, QByteArray*> latestVersion(const QString& hash,
-                                                    const QString& hashFormat,
-                                                    std::optional<std::vector<Version>> mcVersions,
-                                                    std::optional<ModPlatform::ModLoaderTypes> loaders) const;
+    std::pair<Task::Ptr, QByteArray*> latestVersion(
+        const QString& hash,
+        const QString& hashFormat,
+        std::optional<std::vector<Version>> mcVersions,
+        std::optional<ModPlatform::ModLoaderTypes> loaders,
+        std::optional<std::vector<ModPlatform::IndexedVersionType>> releaseTypes = std::nullopt) const;
 
-    std::pair<Task::Ptr, QByteArray*> latestVersions(const QStringList& hashes,
-                                                     const QString& hashFormat,
-                                                     std::optional<std::vector<Version>> mcVersions,
-                                                     std::optional<ModPlatform::ModLoaderTypes> loaders) const;
+    std::pair<Task::Ptr, QByteArray*> latestVersions(
+        const QStringList& hashes,
+        const QString& hashFormat,
+        std::optional<std::vector<Version>> mcVersions,
+        std::optional<ModPlatform::ModLoaderTypes> loaders,
+        std::optional<std::vector<ModPlatform::IndexedVersionType>> releaseTypes = std::nullopt) const;
 
     std::pair<Task::Ptr, QByteArray*> getProjects(QStringList addonIds) const override;
+
+    static QString getModpackIdFromUrl(const QUrl& url);
 
     std::pair<Task::Ptr, QByteArray*> getModCategories() const override;
     static QList<ModPlatform::Category> loadCategories(const QByteArray& response, const QString& projectType);
@@ -70,24 +77,19 @@ class ModrinthAPI final : public ResourceAPI {
         return l.join(',');
     }
 
-    static auto getCategoriesFilters(const QStringList& categories) -> QString
-    {
-        QStringList l;
-        for (const auto& cat : categories) {
-            l << QString("\"categories:%1\"").arg(cat);
-        }
-        return l.join(',');
-    }
-
     static QString getSideFilters(ModPlatform::SideType side)
     {
         switch (side.value()) {
             case ModPlatform::SideType::ClientSide:
-                return { R"("client_side:required","client_side:optional"],["server_side:optional","server_side:unsupported")" };
+                return {
+                    R"("environment:client_only","environment:client_only_server_optional","environment:singleplayer_only","environment:client_or_server","environment:client_or_server_prefers_both")"
+                };
             case ModPlatform::SideTypeValue::ServerSide:
-                return { R"("server_side:required","server_side:optional"],["client_side:optional","client_side:unsupported")" };
+                return {
+                    R"("environment:server_only","environment:server_only_client_optional","environment:dedicated_server_only","environment:client_or_server","environment:client_or_server_prefers_both")"
+                };
             case ModPlatform::SideTypeValue::UniversalSide:
-                return { R"("client_side:required"],["server_side:required")" };
+                return { R"("environment:client_and_server","client_or_server_prefers_both")" };
             case ModPlatform::SideTypeValue::NoSide:
             // fallthrough
             default:
@@ -114,7 +116,7 @@ class ModrinthAPI final : public ResourceAPI {
    private:
     static QString resourceTypeParameter(ModPlatform::ResourceType type);
 
-    QString createFacets(const SearchArgs& args) const
+    static QString createFacets(const SearchArgs& args)
     {
         QStringList facetsList;
 
@@ -131,7 +133,14 @@ class ModrinthAPI final : public ResourceAPI {
             }
         }
         if (args.categoryIds.has_value() && !args.categoryIds->empty()) {
-            facetsList.append(QString("[%1]").arg(getCategoriesFilters(args.categoryIds.value())));
+            for (const auto& category : args.categoryIds.value()) {
+                facetsList.append(QString(R"(["categories:%1"])").arg(category));
+            }
+        }
+        if (!args.excludeDisclosureTypes.empty()) {
+            for (const auto& d : args.excludeDisclosureTypes) {
+                facetsList.append(QString("[\"disclosure_types!=%1\"]").arg(d.toString()));
+            }
         }
         if (args.openSource) {
             facetsList.append("[\"open_source:true\"]");
@@ -191,7 +200,7 @@ class ModrinthAPI final : public ResourceAPI {
             .arg(BuildConfig.MODRINTH_PROD_URL, args.pack->addonId.toString(), getArguments.isEmpty() ? "" : "?", getArguments.join('&'));
     };
 
-    QString getGameVersionsArray(const std::vector<Version>& mcVersions) const
+    static QString getGameVersionsArray(const std::vector<Version>& mcVersions)
     {
         QString s;
         for (const auto& ver : mcVersions) {
@@ -221,10 +230,13 @@ class ModrinthAPI final : public ResourceAPI {
     };
 
     QJsonArray documentToArray(QJsonDocument& obj) const override { return obj.object().value("hits").toArray(); }
-    void loadIndexedPack(ModPlatform::IndexedPack& m, QJsonObject& obj) const override { Modrinth::loadIndexedPack(m, obj); }
-    ModPlatform::IndexedVersion loadIndexedPackVersion(QJsonObject& obj, ModPlatform::ResourceType /*unused*/) const override
+    Result<> loadIndexedPack(ModPlatform::IndexedPack& m, const QJsonObject& obj) const override
+    {
+        return Modrinth::loadIndexedPack(m, obj);
+    }
+    Result<ModPlatform::IndexedVersion> loadIndexedPackVersion(QJsonObject& obj, ModPlatform::ResourceType /*unused*/) const override
     {
         return Modrinth::loadIndexedPackVersion(obj);
     };
-    void loadExtraPackInfo(ModPlatform::IndexedPack& m, QJsonObject& obj) const override { Modrinth::loadExtraPackData(m, obj); }
+    Result<> loadExtraPackInfo(ModPlatform::IndexedPack& m, QJsonObject& obj) const override { return Modrinth::loadExtraPackData(m, obj); }
 };
